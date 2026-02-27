@@ -230,3 +230,26 @@ data class TimetableEntry(
     val endTime: String,
     val color: Long = 0xFF388E3CL
 )
+
+data class MindMapVersion(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val title: String,
+    val content: String,
+    val timestamp: Long = System.currentTimeMillis()
+)
+
+data class Note(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val title: String,
+    val content: String,
+    val timestamp: Long = System.currentTimeMillis(),
+    val alignment: Int = 3,
+    val fontSize: Float = 18f
+)
+
+data class TextMarker(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val startIndex: Int,
+    val endIndex: Int,
+    val originalText: String
+)

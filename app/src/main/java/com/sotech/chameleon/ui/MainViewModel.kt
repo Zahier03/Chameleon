@@ -88,6 +88,18 @@ class MainViewModel @Inject constructor(
         initialValue = emptyList()
     )
 
+    val savedMindMaps = repository.savedMindMaps.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptyList()
+    )
+
+    val savedNotes = repository.savedNotes.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptyList()
+    )
+
     private val _currentModel = MutableStateFlow<ImportedModel?>(null)
     val currentModel: StateFlow<ImportedModel?> = _currentModel.asStateFlow()
 
@@ -112,7 +124,6 @@ class MainViewModel @Inject constructor(
     private val _themeSettings = MutableStateFlow(ThemeSettings())
     val themeSettings: StateFlow<ThemeSettings> = _themeSettings.asStateFlow()
 
-    // Mind Map States
     private val _mindMapContent = MutableStateFlow("")
     val mindMapContent: StateFlow<String> = _mindMapContent.asStateFlow()
 
@@ -237,6 +248,74 @@ class MainViewModel @Inject constructor(
     fun deleteTimetableEntry(entryId: String) {
         viewModelScope.launch {
             repository.deleteTimetableEntry(entryId)
+        }
+    }
+
+    fun saveMindMapVersion(title: String, content: String) {
+        viewModelScope.launch {
+            repository.saveMindMapVersion(MindMapVersion(title = title, content = content))
+        }
+    }
+
+    fun deleteMindMapVersion(id: String) {
+        viewModelScope.launch {
+            repository.deleteMindMapVersion(id)
+        }
+    }
+
+    fun saveNote(id: String?, title: String, content: String, alignment: Int, fontSize: Float) {
+        viewModelScope.launch {
+            val noteToSave = if (id != null) {
+                Note(id = id, title = title, content = content, alignment = alignment, fontSize = fontSize, timestamp = System.currentTimeMillis())
+            } else {
+                Note(title = title, content = content, alignment = alignment, fontSize = fontSize)
+            }
+            repository.saveNote(noteToSave)
+        }
+    }
+
+    fun deleteNote(id: String) {
+        viewModelScope.launch {
+            repository.deleteNote(id)
+        }
+    }
+
+    fun fixNoteText(prompt: String, onComplete: (String) -> Unit) {
+        val currentModel = _currentModel.value
+        if (currentModel == null) {
+            onComplete("")
+            return
+        }
+
+        viewModelScope.launch {
+            try {
+                if (currentModel.isApiModel) {
+                    geminiHelper.generateResponse(
+                        prompt = prompt,
+                        model = currentModel,
+                        images = emptyList(),
+                        onPartialResult = {},
+                        onComplete = { _ ->
+                            onComplete(geminiHelper.currentResponse.value)
+                        },
+                        onError = { onComplete("") }
+                    )
+                } else {
+                    llmHelper.generateResponse(
+                        prompt = prompt,
+                        model = currentModel,
+                        images = emptyList(),
+                        onPartialResult = {},
+                        onComplete = { _ ->
+                            onComplete(llmHelper.currentResponse.value)
+                        },
+                        onError = { onComplete("") }
+                    )
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error in fixNoteText", e)
+                onComplete("")
+            }
         }
     }
 
@@ -478,8 +557,6 @@ class MainViewModel @Inject constructor(
         }
     }
 
-    // --- Mind Map Specific Functions ---
-
     fun updateMindMapContent(content: String) {
         _mindMapContent.value = content
     }
@@ -492,7 +569,6 @@ class MainViewModel @Inject constructor(
             return
         }
 
-        // Validation constraint: local AI cannot process PDFs
         if (pdfUri != null && !currentModel.isApiModel) {
             _mindMapContent.value = "Error: Local AI models do not support PDF processing. Please select a Gemini API model or remove the PDF attachment."
             return
@@ -504,7 +580,6 @@ class MainViewModel @Inject constructor(
 
         currentMessageJob = viewModelScope.launch {
             try {
-                // System prompt to constrain AI to only output Mermaid js structure
                 val systemPrompt = """
                     You are an expert at extracting information and creating mind maps.
                     Analyze the following input and generate a hierarchical mind map structure using Mermaid.js format (graph TD).
@@ -514,8 +589,6 @@ class MainViewModel @Inject constructor(
                     User Input: $prompt
                 """.trimIndent()
 
-                // In a full implementation, you'd extract text from the PDF here if pdfUri != null
-                // and append it to the prompt. For now, we process as standard text/image.
                 val finalPrompt = if (pdfUri != null && currentModel.isApiModel) {
                     "$systemPrompt\n[PDF Attachment Included - Extract key concepts for mind map]"
                 } else {
@@ -528,7 +601,6 @@ class MainViewModel @Inject constructor(
                         model = currentModel,
                         images = images,
                         onPartialResult = { partial ->
-                            // Update mind map text live (could parse live if wanted)
                         },
                         onComplete = { stats ->
                             _isGeneratingMindMap.value = false

@@ -25,6 +25,7 @@ import com.sotech.chameleon.ui.screens.DashboardScreen
 import com.sotech.chameleon.ui.screens.DeckScreen
 import com.sotech.chameleon.ui.screens.MindMapScreen
 import com.sotech.chameleon.ui.screens.ModelSelectorScreen
+import com.sotech.chameleon.ui.screens.NotesScreen
 import com.sotech.chameleon.ui.screens.SettingsScreen
 import com.sotech.chameleon.ui.dialogs.ThemeSettingsDialog
 
@@ -193,6 +194,9 @@ fun ChameleonApp(
                         onNavigateToMindMap = {
                             navController.navigate("mindmap")
                         },
+                        onNavigateToNotes = {
+                            navController.navigate("notes")
+                        },
                         onNavigateToModelManager = {
                             navController.navigate("models")
                         },
@@ -223,6 +227,18 @@ fun ChameleonApp(
 
                 composable("mindmap") {
                     MindMapScreen(
+                        viewModel = viewModel,
+                        onBack = {
+                            navController.popBackStack()
+                        },
+                        onOpenModelSelector = {
+                            navController.navigate("models?fromChat=true")
+                        }
+                    )
+                }
+
+                composable("notes") {
+                    NotesScreen(
                         viewModel = viewModel,
                         onBack = {
                             navController.popBackStack()
@@ -434,6 +450,9 @@ fun ChameleonApp(
                         onNavigateToMindMap = {
                             navController.navigate("mindmap")
                         },
+                        onNavigateToNotes = {
+                            navController.navigate("notes")
+                        },
                         onNavigateToModelManager = {
                             navController.navigate("models")
                         },
@@ -464,6 +483,18 @@ fun ChameleonApp(
 
                 composable("mindmap") {
                     MindMapScreen(
+                        viewModel = viewModel,
+                        onBack = {
+                            navController.popBackStack()
+                        },
+                        onOpenModelSelector = {
+                            navController.navigate("models?fromChat=true")
+                        }
+                    )
+                }
+
+                composable("notes") {
+                    NotesScreen(
                         viewModel = viewModel,
                         onBack = {
                             navController.popBackStack()

@@ -55,6 +55,7 @@ fun HomeScreen(
     onModelImport: (uri: Uri, displayName: String) -> Unit,
     onNavigateToChat: () -> Unit,
     onNavigateToMindMap: () -> Unit,
+    onNavigateToNotes: () -> Unit,
     onNavigateToModelManager: () -> Unit,
     onNavigateToSettings: () -> Unit,
     onStatsSettingsUpdate: (StatsSettings) -> Unit,
@@ -63,7 +64,6 @@ fun HomeScreen(
     var animationStarted by remember { mutableStateOf(false) }
     var showStatsSettings by remember { mutableStateOf(false) }
 
-    // OPTIMIZATION: Use a primitive Long to prevent allocating a new Calendar object every second
     var currentTimeMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var carouselIndex by remember { mutableIntStateOf(0) }
     val uriHandler = LocalUriHandler.current
@@ -171,67 +171,34 @@ fun HomeScreen(
                     verticalArrangement = Arrangement.spacedBy((12 * scaleFactor).dp)
                 ) {
                     item {
-                        AnimatedSection(
-                            visible = animationStarted,
-                            delayMillis = 0
-                        ) {
-                            HeroCarousel(
-                                carouselIndex = carouselIndex,
-                                currentTimeMs = currentTimeMs,
-                                scaleFactor = scaleFactor,
-                                barberChopFont = barberChopFont,
-                                uriHandler = uriHandler,
-                                isLandscape = true
-                            )
+                        AnimatedSection(visible = animationStarted, delayMillis = 0) {
+                            HeroCarousel(carouselIndex, currentTimeMs, scaleFactor, barberChopFont, uriHandler, true)
                         }
                     }
 
                     if (statsSettings.showStats) {
                         item {
-                            AnimatedSection(
-                                visible = animationStarted,
-                                delayMillis = 100
-                            ) {
-                                StatsCard(
-                                    models = models,
-                                    statsSummary = statsSummary,
-                                    scaleFactor = scaleFactor,
-                                    barberChopFont = barberChopFont,
-                                    onSettingsClick = { showStatsSettings = true },
-                                    isLandscape = true
-                                )
+                            AnimatedSection(visible = animationStarted, delayMillis = 100) {
+                                StatsCard(models, statsSummary, scaleFactor, barberChopFont, { showStatsSettings = true }, true)
                             }
                         }
                     }
 
                     item {
-                        AnimatedSection(
-                            visible = animationStarted,
-                            delayMillis = 200
-                        ) {
-                            ChatToolCard(
-                                models = models,
-                                scaleFactor = scaleFactor,
-                                barberChopFont = barberChopFont,
-                                onNavigateToChat = onNavigateToChat,
-                                isLandscape = true
-                            )
+                        AnimatedSection(visible = animationStarted, delayMillis = 200) {
+                            ChatToolCard(models, scaleFactor, barberChopFont, onNavigateToChat, true)
                         }
                     }
 
                     item {
-                        AnimatedSection(
-                            visible = animationStarted,
-                            delayMillis = 300
-                        ) {
-                            MindMapToolCard(
-                                models = models,
-                                currentModel = currentModel,
-                                scaleFactor = scaleFactor,
-                                barberChopFont = barberChopFont,
-                                onNavigateToMindMap = onNavigateToMindMap,
-                                isLandscape = true
-                            )
+                        AnimatedSection(visible = animationStarted, delayMillis = 300) {
+                            MindMapToolCard(models, currentModel, scaleFactor, barberChopFont, onNavigateToMindMap, true)
+                        }
+                    }
+
+                    item {
+                        AnimatedSection(visible = animationStarted, delayMillis = 400) {
+                            NotesToolCard(scaleFactor, barberChopFont, onNavigateToNotes, true)
                         }
                     }
                 }
@@ -247,67 +214,34 @@ fun HomeScreen(
                     verticalArrangement = Arrangement.spacedBy((16 * scaleFactor).dp)
                 ) {
                     item {
-                        AnimatedSection(
-                            visible = animationStarted,
-                            delayMillis = 0
-                        ) {
-                            HeroCarousel(
-                                carouselIndex = carouselIndex,
-                                currentTimeMs = currentTimeMs,
-                                scaleFactor = scaleFactor,
-                                barberChopFont = barberChopFont,
-                                uriHandler = uriHandler,
-                                isLandscape = false
-                            )
+                        AnimatedSection(visible = animationStarted, delayMillis = 0) {
+                            HeroCarousel(carouselIndex, currentTimeMs, scaleFactor, barberChopFont, uriHandler, false)
                         }
                     }
 
                     if (statsSettings.showStats) {
                         item {
-                            AnimatedSection(
-                                visible = animationStarted,
-                                delayMillis = 100
-                            ) {
-                                StatsCard(
-                                    models = models,
-                                    statsSummary = statsSummary,
-                                    scaleFactor = scaleFactor,
-                                    barberChopFont = barberChopFont,
-                                    onSettingsClick = { showStatsSettings = true },
-                                    isLandscape = false
-                                )
+                            AnimatedSection(visible = animationStarted, delayMillis = 100) {
+                                StatsCard(models, statsSummary, scaleFactor, barberChopFont, { showStatsSettings = true }, false)
                             }
                         }
                     }
 
                     item {
-                        AnimatedSection(
-                            visible = animationStarted,
-                            delayMillis = 200
-                        ) {
-                            ChatToolCard(
-                                models = models,
-                                scaleFactor = scaleFactor,
-                                barberChopFont = barberChopFont,
-                                onNavigateToChat = onNavigateToChat,
-                                isLandscape = false
-                            )
+                        AnimatedSection(visible = animationStarted, delayMillis = 200) {
+                            ChatToolCard(models, scaleFactor, barberChopFont, onNavigateToChat, false)
                         }
                     }
 
                     item {
-                        AnimatedSection(
-                            visible = animationStarted,
-                            delayMillis = 300
-                        ) {
-                            MindMapToolCard(
-                                models = models,
-                                currentModel = currentModel,
-                                scaleFactor = scaleFactor,
-                                barberChopFont = barberChopFont,
-                                onNavigateToMindMap = onNavigateToMindMap,
-                                isLandscape = false
-                            )
+                        AnimatedSection(visible = animationStarted, delayMillis = 300) {
+                            MindMapToolCard(models, currentModel, scaleFactor, barberChopFont, onNavigateToMindMap, false)
+                        }
+                    }
+
+                    item {
+                        AnimatedSection(visible = animationStarted, delayMillis = 400) {
+                            NotesToolCard(scaleFactor, barberChopFont, onNavigateToNotes, false)
                         }
                     }
                 }
@@ -358,7 +292,6 @@ fun HeroCarousel(
             when (index) {
                 0 -> {
                     Box(modifier = Modifier.fillMaxSize()) {
-                        // OPTIMIZATION: AsyncImage prevents blocking the main thread during image decoding
                         AsyncImage(
                             model = R.drawable.robot,
                             contentDescription = "Hero Image",
@@ -419,7 +352,6 @@ fun HeroCarousel(
                                     .fillMaxSize()
                                     .padding((16 * scaleFactor).dp)
                             ) {
-                                // OPTIMIZATION: AsyncImage instead of painterResource
                                 AsyncImage(
                                     model = R.drawable.litert,
                                     contentDescription = "LiteRT Logo",
@@ -771,7 +703,7 @@ fun MindMapToolCard(
         onClick = onNavigateToMindMap,
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
-            containerColor = Color(0xFF6A1B9A) // Purple theme for Mind Map
+            containerColor = Color(0xFF6A1B9A)
         ),
         shape = RoundedCornerShape((12 * scaleFactor).dp)
     ) {
@@ -874,13 +806,119 @@ fun MindMapToolCard(
 }
 
 @Composable
+fun NotesToolCard(
+    scaleFactor: Float,
+    barberChopFont: FontFamily,
+    onNavigateToNotes: () -> Unit,
+    isLandscape: Boolean
+) {
+    Card(
+        onClick = onNavigateToNotes,
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = Color(0xFFE65100)
+        ),
+        shape = RoundedCornerShape((12 * scaleFactor).dp)
+    ) {
+        Box(
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(
+                text = "WRITE",
+                style = MaterialTheme.typography.displayMedium.copy(
+                    fontFamily = barberChopFont,
+                    fontSize = if (isLandscape) (40 * scaleFactor).sp else (60 * scaleFactor).sp,
+                    lineHeight = if (isLandscape) (50 * scaleFactor).sp else (70 * scaleFactor).sp
+                ),
+                fontWeight = FontWeight.Black,
+                color = Color(0xFFFF9800),
+                modifier = Modifier.align(Alignment.Center)
+            )
+
+            Box(
+                modifier = Modifier
+                    .size(if (isLandscape) (70 * scaleFactor).dp else (90 * scaleFactor).dp)
+                    .offset(
+                        x = if (isLandscape) (20 * scaleFactor).dp else (25 * scaleFactor).dp,
+                        y = if (isLandscape) (-20 * scaleFactor).dp else (-25 * scaleFactor).dp
+                    )
+                    .align(Alignment.TopEnd)
+                    .background(
+                        color = Color(0xFFF57C00),
+                        shape = CircleShape
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Default.EditNote,
+                    contentDescription = "Open Notes",
+                    modifier = Modifier
+                        .size((24 * scaleFactor).dp)
+                        .offset(x = (-10 * scaleFactor).dp),
+                    tint = Color.White
+                )
+            }
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding((16 * scaleFactor).dp),
+                verticalArrangement = Arrangement.spacedBy((10 * scaleFactor).dp)
+            ) {
+                Text(
+                    text = "NOTES & DOCS",
+                    style = MaterialTheme.typography.titleLarge.copy(
+                        fontFamily = barberChopFont,
+                        fontSize = (16 * scaleFactor).sp,
+                        lineHeight = (20 * scaleFactor).sp
+                    ),
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
+
+                Spacer(modifier = Modifier.height((6 * scaleFactor).dp))
+
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy((6 * scaleFactor).dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.Article,
+                        contentDescription = null,
+                        modifier = Modifier.size((18 * scaleFactor).dp),
+                        tint = Color(0xFFFFB74D)
+                    )
+                    Text(
+                        text = "OPEN EDITOR",
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontFamily = barberChopFont,
+                            fontSize = (14 * scaleFactor).sp,
+                            lineHeight = (18 * scaleFactor).sp
+                        ),
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                }
+
+                Text(
+                    text = "Draft markdown notes & ideas",
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        fontSize = (12 * scaleFactor).sp
+                    ),
+                    color = Color(0xFFFFE0B2)
+                )
+            }
+        }
+    }
+}
+
+@Composable
 fun DigitalClock(
     timeMs: Long,
     font: FontFamily,
     scaleFactor: Float,
     isLandscape: Boolean
 ) {
-    // OPTIMIZATION: Only recreate the format object ONCE, rather than every 1 second during recomposition.
     val timeFormat = remember { SimpleDateFormat("HH:mm:ss", Locale.getDefault()) }
     val timeString = timeFormat.format(timeMs)
 
@@ -937,7 +975,6 @@ fun DateDisplay(
     scaleFactor: Float,
     isLandscape: Boolean
 ) {
-    // OPTIMIZATION: Formatters instantiated only once
     val dateFormat = remember { SimpleDateFormat("MMMM dd, yyyy", Locale.getDefault()) }
     val dayFormat = remember { SimpleDateFormat("EEEE", Locale.getDefault()) }
     val dateString = dateFormat.format(timeMs)

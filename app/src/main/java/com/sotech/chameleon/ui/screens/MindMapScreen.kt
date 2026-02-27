@@ -23,6 +23,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -47,6 +49,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.sotech.chameleon.data.ModelStatus
+import com.sotech.chameleon.data.MindMapVersion
 import com.sotech.chameleon.ui.MainViewModel
 import org.json.JSONObject
 
@@ -61,6 +64,7 @@ fun MindMapScreen(
     val currentModel by viewModel.currentModel.collectAsState()
     val mindMapContent by viewModel.mindMapContent.collectAsState()
     val isGenerating by viewModel.isGeneratingMindMap.collectAsState()
+    val savedMaps by viewModel.savedMindMaps.collectAsState()
 
     // Model Status States
     val modelState by viewModel.modelState.collectAsState()
@@ -84,6 +88,14 @@ fun MindMapScreen(
     var isStylingExpanded by remember { mutableStateOf(false) }
     var isMenuExpanded by remember { mutableStateOf(false) }
 
+    // Version & Multi-map states
+    var showSaveDialog by remember { mutableStateOf(false) }
+    var saveTitle by remember { mutableStateOf("") }
+
+    var showVersionDialog by remember { mutableStateOf(false) }
+    var selectedVersions by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var connectedPrintMaps by remember { mutableStateOf<List<MindMapVersion>>(emptyList()) }
+
     // AI Styling States
     var showAiStyleDialog by remember { mutableStateOf(false) }
     var aiStylePrompt by remember { mutableStateOf("") }
@@ -100,6 +112,14 @@ fun MindMapScreen(
         editableContent = mindMapContent
     }
 
+    val displayCodes = remember(editableContent, connectedPrintMaps) {
+        if (connectedPrintMaps.isNotEmpty()) {
+            listOf(editableContent) + connectedPrintMaps.map { it.content }
+        } else {
+            listOf(editableContent)
+        }
+    }
+
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
         selectedImages = uris
         if (uris.isNotEmpty()) isInputExpanded = true
@@ -110,20 +130,13 @@ fun MindMapScreen(
         if (uri != null) isInputExpanded = true
     }
 
-    // Upgraded beautiful soft aesthetic colors
     val backgroundColors = listOf(
-        Color.Transparent,
-        Color(0xFFF8F9FA), // Soft Gray
-        Color(0xFFFFF0F5), // Lavender Blush (Soft Pink)
-        Color(0xFFE6E6FA), // Lavender (Soft Purple)
-        Color(0xFFF0F8FF), // Alice Blue (Soft Blue)
-        Color(0xFFF5FFFA), // Mint Cream (Soft Green)
-        Color(0xFFFFFACD), // Lemon Chiffon (Soft Yellow)
-        Color(0xFF1E1E1E)  // Dark Mode
+        Color.Transparent, Color(0xFFF8F9FA), Color(0xFFFFF0F5),
+        Color(0xFFE6E6FA), Color(0xFFF0F8FF), Color(0xFFF5FFFA),
+        Color(0xFFFFFACD), Color(0xFF1E1E1E)
     )
     val mermaidThemes = listOf("default", "dark", "forest", "neutral", "base")
 
-    // Dynamically calculate the interactive share URL
     val currentShareUrl = remember(editableContent, mindMapTheme) {
         try {
             val jsonString = JSONObject().apply {
@@ -201,7 +214,8 @@ fun MindMapScreen(
                         Icon(Icons.Default.Settings, contentDescription = "Model Settings")
                     }
 
-                    if (editableContent.isNotBlank() && !isGenerating) {
+                    // Always show the 3-dot menu if we aren't generating, so user can access History
+                    if (!isGenerating) {
                         Box {
                             IconButton(onClick = { isMenuExpanded = true }) {
                                 Icon(Icons.Default.MoreVert, contentDescription = "More Options")
@@ -211,61 +225,86 @@ fun MindMapScreen(
                                 expanded = isMenuExpanded,
                                 onDismissRequest = { isMenuExpanded = false }
                             ) {
+                                // Only show these if there is an active map
+                                if (editableContent.isNotBlank()) {
+                                    DropdownMenuItem(
+                                        text = { Text(if (showCodeEditor) "Show Map View" else "Edit Mermaid Code") },
+                                        onClick = {
+                                            showCodeEditor = !showCodeEditor
+                                            isMenuExpanded = false
+                                        },
+                                        leadingIcon = {
+                                            Icon(
+                                                imageVector = if (showCodeEditor) Icons.Default.Map else Icons.Default.Code,
+                                                contentDescription = null
+                                            )
+                                        }
+                                    )
+
+                                    DropdownMenuItem(
+                                        text = { Text("Save Current Version") },
+                                        onClick = {
+                                            isMenuExpanded = false
+                                            saveTitle = ""
+                                            showSaveDialog = true
+                                        },
+                                        leadingIcon = { Icon(Icons.Default.Save, contentDescription = null) }
+                                    )
+                                }
+
+                                // ALWAYS SHOW VERSION HISTORY
                                 DropdownMenuItem(
-                                    text = { Text(if (showCodeEditor) "Show Map View" else "Edit Mermaid Code") },
+                                    text = { Text("Version History & Connect") },
                                     onClick = {
-                                        showCodeEditor = !showCodeEditor
                                         isMenuExpanded = false
+                                        showVersionDialog = true
                                     },
-                                    leadingIcon = {
-                                        Icon(
-                                            imageVector = if (showCodeEditor) Icons.Default.Map else Icons.Default.Code,
-                                            contentDescription = null
-                                        )
-                                    }
+                                    leadingIcon = { Icon(Icons.Default.History, contentDescription = null) }
                                 )
 
-                                DropdownMenuItem(
-                                    text = { Text("Share Link (Mermaid Live)") },
-                                    onClick = {
-                                        isMenuExpanded = false
-                                        try {
-                                            val sendIntent: Intent = Intent().apply {
-                                                action = Intent.ACTION_SEND
-                                                putExtra(Intent.EXTRA_TEXT, "Check out my beautiful mind map!\n\n$currentShareUrl")
-                                                type = "text/plain"
+                                if (editableContent.isNotBlank()) {
+                                    DropdownMenuItem(
+                                        text = { Text("Share Link (Mermaid Live)") },
+                                        onClick = {
+                                            isMenuExpanded = false
+                                            try {
+                                                val sendIntent: Intent = Intent().apply {
+                                                    action = Intent.ACTION_SEND
+                                                    putExtra(Intent.EXTRA_TEXT, "Check out my beautiful mind map!\n\n$currentShareUrl")
+                                                    type = "text/plain"
+                                                }
+                                                val shareIntent = Intent.createChooser(sendIntent, "Share Mind Map")
+                                                context.startActivity(shareIntent)
+                                            } catch (e: Exception) {
+                                                e.printStackTrace()
                                             }
-                                            val shareIntent = Intent.createChooser(sendIntent, "Share Mind Map")
-                                            context.startActivity(shareIntent)
-                                        } catch (e: Exception) {
-                                            e.printStackTrace()
+                                        },
+                                        leadingIcon = {
+                                            Icon(Icons.Default.Share, contentDescription = null)
                                         }
-                                    },
-                                    leadingIcon = {
-                                        Icon(Icons.Default.Share, contentDescription = null)
-                                    }
-                                )
+                                    )
 
-                                DropdownMenuItem(
-                                    text = { Text("Export to PDF") },
-                                    onClick = {
-                                        isMenuExpanded = false
-                                        webViewInstance?.let { webView ->
-                                            val printManager = context.getSystemService(Context.PRINT_SERVICE) as PrintManager
-                                            val jobName = "MindMap_${System.currentTimeMillis()}"
-                                            val printAdapter = webView.createPrintDocumentAdapter(jobName)
+                                    DropdownMenuItem(
+                                        text = { Text("Export to PDF (Inc. Connected)") },
+                                        onClick = {
+                                            isMenuExpanded = false
+                                            webViewInstance?.let { webView ->
+                                                val printManager = context.getSystemService(Context.PRINT_SERVICE) as PrintManager
+                                                val jobName = "MindMap_${System.currentTimeMillis()}"
+                                                val printAdapter = webView.createPrintDocumentAdapter(jobName)
 
-                                            val printAttributes = PrintAttributes.Builder()
-                                                .setMediaSize(PrintAttributes.MediaSize.UNKNOWN_LANDSCAPE)
-                                                .build()
+                                                val printAttributes = PrintAttributes.Builder()
+                                                    .setMediaSize(PrintAttributes.MediaSize.UNKNOWN_LANDSCAPE)
+                                                    .build()
 
-                                            printManager.print(jobName, printAdapter, printAttributes)
+                                                printManager.print(jobName, printAdapter, printAttributes)
+                                            }
+                                        },
+                                        leadingIcon = {
+                                            Icon(Icons.Default.PictureAsPdf, contentDescription = null)
                                         }
-                                    },
-                                    leadingIcon = {
-                                        Icon(Icons.Default.PictureAsPdf, contentDescription = null)
-                                    }
-                                )
+                                    )
+                                }
                             }
                         }
                     }
@@ -411,6 +450,7 @@ fun MindMapScreen(
                                     showCodeEditor = false
                                     keyboardController?.hide()
                                     isInputExpanded = false
+                                    connectedPrintMaps = emptyList()
                                 },
                                 enabled = isModelReady && !isGenerating && (promptText.isNotBlank() || selectedImages.isNotEmpty() || selectedPdf != null),
                                 modifier = Modifier.size(48.dp),
@@ -442,7 +482,6 @@ fun MindMapScreen(
                 .background(MaterialTheme.colorScheme.background)
         ) {
 
-            // FOLDABLE AESTHETIC STYLING PANEL
             AnimatedVisibility(visible = editableContent.isNotBlank() && !showCodeEditor && isModelReady) {
                 ElevatedCard(
                     modifier = Modifier
@@ -460,7 +499,6 @@ fun MindMapScreen(
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp, vertical = 12.dp)
                     ) {
-                        // Header for Foldable Panel
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -489,7 +527,6 @@ fun MindMapScreen(
                             )
                         }
 
-                        // Collapsible Content
                         if (isStylingExpanded) {
                             Spacer(modifier = Modifier.height(16.dp))
 
@@ -635,7 +672,7 @@ fun MindMapScreen(
                         )
                     } else {
                         MermaidWebView(
-                            mermaidCode = editableContent,
+                            mermaidCodes = displayCodes,
                             theme = mindMapTheme,
                             shareUrl = currentShareUrl,
                             onNodeClicked = { clickedText ->
@@ -682,10 +719,129 @@ fun MindMapScreen(
         }
     }
 
+    if (showSaveDialog) {
+        AlertDialog(
+            onDismissRequest = { showSaveDialog = false },
+            title = { Text("Save Version") },
+            text = {
+                OutlinedTextField(
+                    value = saveTitle,
+                    onValueChange = { saveTitle = it },
+                    label = { Text("Version Title") },
+                    singleLine = true
+                )
+            },
+            confirmButton = {
+                Button(onClick = {
+                    if (saveTitle.isNotBlank()) {
+                        viewModel.saveMindMapVersion(saveTitle, editableContent)
+                        showSaveDialog = false
+                    }
+                }) { Text("Save") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSaveDialog = false }) { Text("Cancel") }
+            }
+        )
+    }
+
+    if (showVersionDialog) {
+        AlertDialog(
+            onDismissRequest = { showVersionDialog = false },
+            title = { Text("Version History & Connections") },
+            text = {
+                if (savedMaps.isEmpty()) {
+                    Text(
+                        "No saved versions found. Generate and save a map first!",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else {
+                    LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 300.dp)) {
+                        items(savedMaps) { map ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        if (selectedVersions.contains(map.id)) {
+                                            selectedVersions = selectedVersions - map.id
+                                        } else {
+                                            selectedVersions = selectedVersions + map.id
+                                        }
+                                    }
+                                    .padding(vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Checkbox(
+                                    checked = selectedVersions.contains(map.id),
+                                    onCheckedChange = null
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(map.title, fontWeight = FontWeight.Bold)
+                                    Text(
+                                        java.text.SimpleDateFormat("MMM dd, HH:mm").format(java.util.Date(map.timestamp)),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                IconButton(onClick = {
+                                    editableContent = map.content
+                                    viewModel.updateMindMapContent(map.content)
+                                    connectedPrintMaps = emptyList()
+                                    showVersionDialog = false
+                                }) {
+                                    Icon(Icons.Default.Download, contentDescription = "Load")
+                                }
+                                IconButton(onClick = { viewModel.deleteMindMapVersion(map.id) }) {
+                                    Icon(Icons.Default.Delete, contentDescription = "Delete")
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                if (selectedVersions.size > 1) {
+                    Button(onClick = {
+                        val selectedMapsList = savedMaps.filter { selectedVersions.contains(it.id) }
+                        val sb = StringBuilder()
+                        sb.append("graph TD\n")
+                        selectedMapsList.forEach { map ->
+                            val cleanContent = map.content
+                                .replace("graph TD", "")
+                                .replace("graph LR", "")
+                                .replace("mindmap", "")
+                                .trim()
+                            val safeTitle = map.title.replace(Regex("[^A-Za-z0-9]"), "_")
+                            sb.append("subgraph $safeTitle[${map.title}]\n")
+                            sb.append(cleanContent)
+                            sb.append("\nend\n")
+                        }
+                        for (i in 0 until selectedMapsList.size - 1) {
+                            val t1 = selectedMapsList[i].title.replace(Regex("[^A-Za-z0-9]"), "_")
+                            val t2 = selectedMapsList[i+1].title.replace(Regex("[^A-Za-z0-9]"), "_")
+                            sb.append("$t1 --> $t2\n")
+                        }
+                        val combinedCode = sb.toString()
+
+                        editableContent = combinedCode
+                        viewModel.updateMindMapContent(combinedCode)
+                        connectedPrintMaps = selectedMapsList
+                        showVersionDialog = false
+                    }) {
+                        Text("Combine Maps for Print")
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showVersionDialog = false }) { Text("Close") }
+            }
+        )
+    }
+
     if (showAiStyleDialog) {
         AlertDialog(
             onDismissRequest = { showAiStyleDialog = false },
-            containerColor = MaterialTheme.colorScheme.surface,
             icon = {
                 Icon(
                     Icons.Default.Star,
@@ -719,7 +875,6 @@ fun MindMapScreen(
                 Button(
                     onClick = {
                         showAiStyleDialog = false
-                        // Combine the style instructions with the content generation
                         val magicPrompt = if (promptText.isNotBlank()) {
                             "$promptText\n\nCRITICAL STYLING INSTRUCTIONS: $aiStylePrompt"
                         } else {
@@ -727,6 +882,7 @@ fun MindMapScreen(
                         }
                         viewModel.generateMindMap(magicPrompt, emptyList(), null)
                         isStylingExpanded = false
+                        connectedPrintMaps = emptyList()
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)
                 ) {
@@ -816,13 +972,17 @@ class WebAppInterface(private val onNodeClick: (String) -> Unit) {
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun MermaidWebView(
-    mermaidCode: String,
+    mermaidCodes: List<String>,
     theme: String,
     shareUrl: String,
     onNodeClicked: (String) -> Unit,
     modifier: Modifier = Modifier,
     onWebViewReady: (WebView) -> Unit = {}
 ) {
+    val diagramsHtml = mermaidCodes.joinToString("\n<div class='page-break'></div>\n") { code ->
+        "<div class=\"mermaid\">\n$code\n</div>"
+    }
+
     val html = """
         <!DOCTYPE html>
         <html>
@@ -863,6 +1023,9 @@ fun MermaidWebView(
                 }
                 .pdf-header {
                     display: none; 
+                }
+                .page-break {
+                    display: none;
                 }
                 @media print {
                     @page {
@@ -913,10 +1076,17 @@ fun MermaidWebView(
                         width: 100%;
                         display: flex;
                         justify-content: center;
+                        margin-bottom: 20px;
                     }
                     .mermaid svg {
                         max-width: 100% !important;
                         height: auto !important;
+                    }
+                    .page-break {
+                        display: block;
+                        page-break-after: always;
+                        height: 0;
+                        border: none;
                     }
                     text, .edgeLabel, .nodeLabel {
                         font-family: 'Roboto', sans-serif !important;
@@ -937,9 +1107,7 @@ fun MermaidWebView(
                 <p>Interactive Map Available</p>
                 <a href="$shareUrl">View Interactive Map</a>
             </div>
-            <div class="mermaid">
-                $mermaidCode
-            </div>
+            $diagramsHtml
         </body>
         </html>
     """.trimIndent()

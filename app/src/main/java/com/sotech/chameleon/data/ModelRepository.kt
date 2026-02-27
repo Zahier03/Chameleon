@@ -30,6 +30,8 @@ class ModelRepository @Inject constructor(
     private val THEME_SETTINGS_KEY = stringPreferencesKey("theme_settings")
     private val CALENDAR_EVENTS_KEY = stringPreferencesKey("calendar_events")
     private val TIMETABLE_ENTRIES_KEY = stringPreferencesKey("timetable_entries")
+    private val MIND_MAP_VERSIONS_KEY = stringPreferencesKey("mind_map_versions")
+    private val NOTES_KEY = stringPreferencesKey("saved_notes")
 
     val importedModels: Flow<List<ImportedModel>> = context.dataStore.data
         .map { preferences ->
@@ -73,6 +75,20 @@ class ModelRepository @Inject constructor(
         .map { preferences ->
             val json = preferences[TIMETABLE_ENTRIES_KEY] ?: "[]"
             val type = object : TypeToken<List<TimetableEntry>>() {}.type
+            gson.fromJson(json, type) ?: emptyList()
+        }
+
+    val savedMindMaps: Flow<List<MindMapVersion>> = context.dataStore.data
+        .map { preferences ->
+            val json = preferences[MIND_MAP_VERSIONS_KEY] ?: "[]"
+            val type = object : TypeToken<List<MindMapVersion>>() {}.type
+            gson.fromJson(json, type) ?: emptyList()
+        }
+
+    val savedNotes: Flow<List<Note>> = context.dataStore.data
+        .map { preferences ->
+            val json = preferences[NOTES_KEY] ?: "[]"
+            val type = object : TypeToken<List<Note>>() {}.type
             gson.fromJson(json, type) ?: emptyList()
         }
 
@@ -328,6 +344,44 @@ class ModelRepository @Inject constructor(
         }
     }
 
+    suspend fun saveMindMapVersion(version: MindMapVersion) {
+        context.dataStore.edit { preferences ->
+            val current = getMindMapVersionsFromPrefs(preferences).toMutableList()
+            current.add(version)
+            preferences[MIND_MAP_VERSIONS_KEY] = gson.toJson(current)
+        }
+    }
+
+    suspend fun deleteMindMapVersion(id: String) {
+        context.dataStore.edit { preferences ->
+            val current = getMindMapVersionsFromPrefs(preferences).toMutableList()
+            current.removeAll { it.id == id }
+            preferences[MIND_MAP_VERSIONS_KEY] = gson.toJson(current)
+        }
+    }
+
+    suspend fun saveNote(note: Note) {
+        context.dataStore.edit { preferences ->
+            val currentNotes = getNotesFromPrefs(preferences).toMutableList()
+            val existingIndex = currentNotes.indexOfFirst { it.id == note.id }
+
+            if (existingIndex != -1) {
+                currentNotes[existingIndex] = note
+            } else {
+                currentNotes.add(0, note)
+            }
+            preferences[NOTES_KEY] = gson.toJson(currentNotes)
+        }
+    }
+
+    suspend fun deleteNote(id: String) {
+        context.dataStore.edit { preferences ->
+            val currentNotes = getNotesFromPrefs(preferences).toMutableList()
+            currentNotes.removeAll { it.id == id }
+            preferences[NOTES_KEY] = gson.toJson(currentNotes)
+        }
+    }
+
     private fun getModelsFromPrefs(preferences: Preferences): List<ImportedModel> {
         val json = preferences[MODELS_KEY] ?: "[]"
         val type = object : TypeToken<List<ImportedModel>>() {}.type
@@ -355,6 +409,18 @@ class ModelRepository @Inject constructor(
     private fun getTimetableEntriesFromPrefs(preferences: Preferences): List<TimetableEntry> {
         val json = preferences[TIMETABLE_ENTRIES_KEY] ?: "[]"
         val type = object : TypeToken<List<TimetableEntry>>() {}.type
+        return gson.fromJson(json, type) ?: emptyList()
+    }
+
+    private fun getMindMapVersionsFromPrefs(preferences: Preferences): List<MindMapVersion> {
+        val json = preferences[MIND_MAP_VERSIONS_KEY] ?: "[]"
+        val type = object : TypeToken<List<MindMapVersion>>() {}.type
+        return gson.fromJson(json, type) ?: emptyList()
+    }
+
+    private fun getNotesFromPrefs(preferences: Preferences): List<Note> {
+        val json = preferences[NOTES_KEY] ?: "[]"
+        val type = object : TypeToken<List<Note>>() {}.type
         return gson.fromJson(json, type) ?: emptyList()
     }
 
