@@ -24,7 +24,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
@@ -43,8 +42,6 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.sotech.chameleon.ui.MainViewModel
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import org.json.JSONObject
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -63,27 +60,18 @@ fun MindMapScreen(
     var editableContent by remember { mutableStateOf(mindMapContent) }
     var showCodeEditor by remember { mutableStateOf(false) }
 
-    // UI Fold States
-    var isInputExpanded by remember { mutableStateOf(true) }
-    var isCustomizationExpanded by remember { mutableStateOf(false) } // Foldable Customization Menu
-    var isMenuExpanded by remember { mutableStateOf(false) }
-    var searchNodeText by remember { mutableStateOf<String?>(null) }
-
-    // Map Styling States
+    // States for Colors, Themes, Search Dialog, Folding Input, and Menu
     var mindMapBackgroundColor by remember { mutableStateOf(Color.Transparent) }
     var mindMapTheme by remember { mutableStateOf("default") }
-
-    // Custom Background States
-    var showCustomBgDialog by remember { mutableStateOf(false) }
-    var isCustomBgEnabled by remember { mutableStateOf(false) }
-    var customCss by remember { mutableStateOf("") }
-    var customHtml by remember { mutableStateOf("<div class=\"container\"></div>") }
+    var searchNodeText by remember { mutableStateOf<String?>(null) }
+    var isInputExpanded by remember { mutableStateOf(true) }
+    var isMenuExpanded by remember { mutableStateOf(false) } // Controls the top right menu
 
     val context = LocalContext.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val isApiModel = currentModel?.isApiModel == true
-    val scope = rememberCoroutineScope()
 
+    // Keep editable content synced with viewmodel generation
     LaunchedEffect(mindMapContent) {
         editableContent = mindMapContent
     }
@@ -119,14 +107,17 @@ fun MindMapScreen(
                 actions = {
                     if (editableContent.isNotBlank() && !isGenerating) {
                         Box {
+                            // Hamburger / More Options Icon
                             IconButton(onClick = { isMenuExpanded = true }) {
                                 Icon(Icons.Default.MoreVert, contentDescription = "More Options")
                             }
 
+                            // The Dropdown Menu
                             DropdownMenu(
                                 expanded = isMenuExpanded,
                                 onDismissRequest = { isMenuExpanded = false }
                             ) {
+                                // 1. Toggle Code Editor
                                 DropdownMenuItem(
                                     text = { Text(if (showCodeEditor) "Show Map View" else "Edit Mermaid Code") },
                                     onClick = {
@@ -134,15 +125,20 @@ fun MindMapScreen(
                                         isMenuExpanded = false
                                     },
                                     leadingIcon = {
-                                        Icon(imageVector = if (showCodeEditor) Icons.Default.Map else Icons.Default.Code, contentDescription = null)
+                                        Icon(
+                                            imageVector = if (showCodeEditor) Icons.Default.Map else Icons.Default.Code,
+                                            contentDescription = null
+                                        )
                                     }
                                 )
 
+                                // 2. Share to Mermaid Live
                                 DropdownMenuItem(
                                     text = { Text("Share Link (Mermaid Live)") },
                                     onClick = {
                                         isMenuExpanded = false
                                         try {
+                                            // Format the JSON required by Mermaid Live Editor
                                             val jsonString = JSONObject().apply {
                                                 put("code", editableContent)
                                                 put("mermaid", "{\n  \"theme\": \"$mindMapTheme\"\n}")
@@ -150,18 +146,24 @@ fun MindMapScreen(
                                                 put("updateDiagram", false)
                                             }.toString()
 
+                                            // Encode string to URL-safe Base64
                                             val base64 = android.util.Base64.encodeToString(
                                                 jsonString.toByteArray(Charsets.UTF_8),
                                                 android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP
                                             )
+
+                                            // Construct the final URL
                                             val shareUrl = "https://mermaid.live/edit#base64:$base64"
 
+                                            // Launch Android Share Sheet
                                             val sendIntent: Intent = Intent().apply {
                                                 action = Intent.ACTION_SEND
                                                 putExtra(Intent.EXTRA_TEXT, "Check out my mind map!\n\n$shareUrl")
                                                 type = "text/plain"
                                             }
-                                            context.startActivity(Intent.createChooser(sendIntent, "Share Mind Map"))
+                                            val shareIntent = Intent.createChooser(sendIntent, "Share Mind Map")
+                                            context.startActivity(shareIntent)
+
                                         } catch (e: Exception) {
                                             e.printStackTrace()
                                         }
@@ -181,6 +183,7 @@ fun MindMapScreen(
             )
         },
         floatingActionButton = {
+            // Floating button to bring back the input area when it's folded
             AnimatedVisibility(
                 visible = !isInputExpanded,
                 enter = scaleIn() + fadeIn(),
@@ -196,6 +199,7 @@ fun MindMapScreen(
             }
         },
         bottomBar = {
+            // Animated folding for the input area
             AnimatedVisibility(
                 visible = isInputExpanded,
                 enter = slideInVertically(initialOffsetY = { it }, animationSpec = tween(300)) + fadeIn(),
@@ -214,12 +218,17 @@ fun MindMapScreen(
                             .padding(horizontal = 16.dp, vertical = 12.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
+                        // Header with close button to manually fold the input
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("Create or update map", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                            Text(
+                                "Create or update map",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.primary
+                            )
                             IconButton(
                                 onClick = {
                                     isInputExpanded = false
@@ -231,6 +240,7 @@ fun MindMapScreen(
                             }
                         }
 
+                        // Attachments preview
                         AnimatedVisibility(visible = selectedImages.isNotEmpty() || selectedPdf != null) {
                             Row(
                                 modifier = Modifier
@@ -312,7 +322,7 @@ fun MindMapScreen(
                                     viewModel.generateMindMap(promptText, bitmaps, selectedPdf)
                                     showCodeEditor = false
                                     keyboardController?.hide()
-                                    isInputExpanded = false
+                                    isInputExpanded = false // Fold input away on generate
                                 },
                                 enabled = !isGenerating && (promptText.isNotBlank() || selectedImages.isNotEmpty() || selectedPdf != null),
                                 modifier = Modifier.size(48.dp),
@@ -345,100 +355,56 @@ fun MindMapScreen(
                 .background(MaterialTheme.colorScheme.background)
         ) {
 
-            // --- FOLDABLE CUSTOMIZATION MENU ---
+            // Customization Options (Styles & Backgrounds)
             AnimatedVisibility(visible = editableContent.isNotBlank() && !showCodeEditor) {
                 Column(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    // Toggle Header
+                    // Theme (Nodes/Text Color) Picker
                     Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .clickable { isCustomizationExpanded = !isCustomizationExpanded }
-                            .padding(vertical = 8.dp, horizontal = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        modifier = Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Palette, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Customize Map Design", style = MaterialTheme.typography.titleMedium)
+                        Text("Map Style:", style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(end = 4.dp))
+                        mermaidThemes.forEach { theme ->
+                            FilterChip(
+                                selected = mindMapTheme == theme,
+                                onClick = { mindMapTheme = theme },
+                                label = { Text(theme.replaceFirstChar { it.uppercase() }) },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                    selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                            )
                         }
-                        Icon(
-                            imageVector = if (isCustomizationExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                            contentDescription = "Toggle Customization"
-                        )
                     }
 
-                    // Foldable Content
-                    AnimatedVisibility(visible = isCustomizationExpanded) {
-                        Column(verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.padding(top = 8.dp)) {
-                            // Map Theme
-                            Row(
-                                modifier = Modifier.horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text("Theme:", style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(end = 4.dp))
-                                mermaidThemes.forEach { theme ->
-                                    FilterChip(
-                                        selected = mindMapTheme == theme,
-                                        onClick = { mindMapTheme = theme },
-                                        label = { Text(theme.replaceFirstChar { it.uppercase() }) },
-                                        colors = FilterChipDefaults.filterChipColors(
-                                            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                                            selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
-                                        )
+                    // Background Color Picker
+                    Row(
+                        modifier = Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Background:", style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(end = 4.dp))
+                        backgroundColors.forEach { color ->
+                            Box(
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .clip(CircleShape)
+                                    .background(if (color == Color.Transparent) MaterialTheme.colorScheme.surfaceVariant else color)
+                                    .border(
+                                        width = 2.dp,
+                                        color = if (mindMapBackgroundColor == color) MaterialTheme.colorScheme.primary else Color.Gray.copy(alpha = 0.3f),
+                                        shape = CircleShape
                                     )
-                                }
-                            }
-
-                            // Backgrounds
-                            Row(
-                                modifier = Modifier.horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                                    .clickable { mindMapBackgroundColor = color }
                             ) {
-                                Text("Background:", style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(end = 4.dp))
-
-                                // Standard Colors
-                                backgroundColors.forEach { color ->
-                                    Box(
-                                        modifier = Modifier
-                                            .size(32.dp)
-                                            .clip(CircleShape)
-                                            .background(if (color == Color.Transparent) MaterialTheme.colorScheme.surfaceVariant else color)
-                                            .border(
-                                                width = 2.dp,
-                                                color = if (!isCustomBgEnabled && mindMapBackgroundColor == color) MaterialTheme.colorScheme.primary else Color.Gray.copy(alpha = 0.3f),
-                                                shape = CircleShape
-                                            )
-                                            .clickable {
-                                                mindMapBackgroundColor = color
-                                                isCustomBgEnabled = false
-                                            }
-                                    ) {
-                                        if (color == Color.Transparent) {
-                                            Icon(Icons.Default.Clear, contentDescription = "Clear", modifier = Modifier.align(Alignment.Center), tint = Color.Gray)
-                                        }
-                                    }
-                                }
-
-                                // Custom Code / AI Generator Button
-                                Box(
-                                    modifier = Modifier
-                                        .size(32.dp)
-                                        .clip(CircleShape)
-                                        .background(MaterialTheme.colorScheme.secondaryContainer)
-                                        .border(
-                                            width = 2.dp,
-                                            color = if (isCustomBgEnabled) MaterialTheme.colorScheme.primary else Color.Transparent,
-                                            shape = CircleShape
-                                        )
-                                        .clickable { showCustomBgDialog = true }
-                                ) {
-                                    Icon(Icons.Default.Code, contentDescription = "Custom CSS", modifier = Modifier.align(Alignment.Center).size(18.dp), tint = MaterialTheme.colorScheme.onSecondaryContainer)
+                                if (color == Color.Transparent) {
+                                    Icon(Icons.Default.Clear, contentDescription = "Clear", modifier = Modifier.align(Alignment.Center), tint = Color.Gray)
                                 }
                             }
                         }
@@ -453,7 +419,7 @@ fun MindMapScreen(
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 8.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .background(if (!showCodeEditor && !isCustomBgEnabled) mindMapBackgroundColor else if (!showCodeEditor && isCustomBgEnabled) Color.Transparent else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                    .background(if (!showCodeEditor) mindMapBackgroundColor else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
             ) {
                 if (isGenerating) {
                     Column(
@@ -472,7 +438,9 @@ fun MindMapScreen(
                                 editableContent = it
                                 viewModel.updateMindMapContent(it)
                             },
-                            modifier = Modifier.fillMaxSize().padding(8.dp),
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(8.dp),
                             textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
                             label = { Text("Mermaid.js Structure (Edit to change map)") }
                         )
@@ -480,8 +448,6 @@ fun MindMapScreen(
                         MermaidWebView(
                             mermaidCode = editableContent,
                             theme = mindMapTheme,
-                            customCss = if (isCustomBgEnabled) customCss else "",
-                            customHtml = if (isCustomBgEnabled) customHtml else "",
                             onNodeClicked = { clickedText ->
                                 searchNodeText = clickedText
                             },
@@ -494,178 +460,80 @@ fun MindMapScreen(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Icon(Icons.Default.AccountTree, contentDescription = null, modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f))
-                        Text("Enter a prompt to generate a Mind Map", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Icon(
+                            Icons.Default.AccountTree,
+                            contentDescription = null,
+                            modifier = Modifier.size(64.dp),
+                            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)
+                        )
+                        Text(
+                            "Enter a prompt to generate a Mind Map",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
             }
         }
     }
 
-    // --- CUSTOM BACKGROUND HTML/CSS DIALOG ---
-    if (showCustomBgDialog) {
-        var aiPrompt by remember { mutableStateOf("") }
-        var isAiGenerating by remember { mutableStateOf(false) }
-
-        Dialog(
-            onDismissRequest = { showCustomBgDialog = false },
-            properties = DialogProperties(usePlatformDefaultWidth = false)
-        ) {
-            Surface(
-                modifier = Modifier.fillMaxWidth(0.95f).fillMaxHeight(0.9f).clip(RoundedCornerShape(16.dp)),
-                color = MaterialTheme.colorScheme.surface
-            ) {
-                Column(modifier = Modifier.fillMaxSize()) {
-                    // Header
-                    Row(
-                        modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.primaryContainer).padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text("Custom Map Background", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
-                        Switch(
-                            checked = isCustomBgEnabled,
-                            onCheckedChange = { isCustomBgEnabled = it }
-                        )
-                    }
-
-                    Column(
-                        modifier = Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()).padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        // Ask AI Section
-                        Card(
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha=0.5f))
-                        ) {
-                            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Default.AutoAwesome, contentDescription = "AI", tint = Color(0xFF8E24AA))
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text("Ask AI to generate a pattern", style = MaterialTheme.typography.titleSmall)
-                                }
-                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    OutlinedTextField(
-                                        value = aiPrompt,
-                                        onValueChange = { aiPrompt = it },
-                                        placeholder = { Text("e.g., A futuristic blue cyber grid...") },
-                                        modifier = Modifier.weight(1f),
-                                        singleLine = true
-                                    )
-                                    if (isAiGenerating) {
-                                        CircularProgressIndicator(modifier = Modifier.size(24.dp))
-                                    } else {
-                                        IconButton(
-                                            onClick = {
-                                                // Simulated AI Generation (You can replace this with actual ViewModel API call later)
-                                                scope.launch {
-                                                    isAiGenerating = true
-                                                    delay(1500) // Fake loading time
-                                                    customCss = ".container {\n  width: 100%;\n  height: 100%;\n  background-color: #0b0f19;\n  background-image: \n    radial-gradient(circle at 50% 50%, #1a233a 0%, #0b0f19 100%), \n    linear-gradient(0deg, rgba(0, 255, 128, 0.1) 1px, transparent 1px), \n    linear-gradient(90deg, rgba(0, 255, 128, 0.1) 1px, transparent 1px);\n  background-size: 100% 100%, 40px 40px, 40px 40px;\n}"
-                                                    customHtml = "<div class=\"container\"></div>"
-                                                    isCustomBgEnabled = true
-                                                    isAiGenerating = false
-                                                    aiPrompt = ""
-                                                }
-                                            },
-                                            colors = IconButtonDefaults.iconButtonColors(containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary)
-                                        ) {
-                                            Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Generate")
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        // 1-Tap Presets
-                        Text("1-Tap Presets:", style = MaterialTheme.typography.labelMedium)
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
-                            Button(onClick = {
-                                customCss = ".container {\n  width: 100%;\n  height: 100%;\n  --color: rgba(114, 114, 114, 0.3);\n  background-color: #191a1a;\n  background-image: linear-gradient(0deg, transparent 24%, var(--color) 25%, var(--color) 26%, transparent 27%,transparent 74%, var(--color) 75%, var(--color) 76%, transparent 77%,transparent),\n      linear-gradient(90deg, transparent 24%, var(--color) 25%, var(--color) 26%, transparent 27%,transparent 74%, var(--color) 75%, var(--color) 76%, transparent 77%,transparent);\n  background-size: 55px 55px;\n}"
-                                customHtml = "<div class=\"container\"></div>"
-                                isCustomBgEnabled = true
-                            }) { Text("Grid Line") }
-
-                            Button(onClick = {
-                                customCss = ".container {\n  width: 100%;\n  height: 100%;\n  background: rgba(29, 31, 32, 0.904)\n    radial-gradient(rgba(255, 255, 255, 0.712) 10%, transparent 1%);\n  background-size: 11px 11px;\n}"
-                                customHtml = "<div class=\"container\"></div>"
-                                isCustomBgEnabled = true
-                            }) { Text("Dots") }
-
-                            Button(onClick = {
-                                customCss = ""
-                                customHtml = ""
-                                isCustomBgEnabled = false
-                            }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) { Text("Clear") }
-                        }
-
-                        // Manual Code Editors
-                        OutlinedTextField(
-                            value = customCss,
-                            onValueChange = { customCss = it },
-                            label = { Text("CSS (e.g. .container { ... })") },
-                            modifier = Modifier.fillMaxWidth().height(200.dp),
-                            textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace)
-                        )
-                        OutlinedTextField(
-                            value = customHtml,
-                            onValueChange = { customHtml = it },
-                            label = { Text("HTML (e.g. <div class=\"container\"></div>)") },
-                            modifier = Modifier.fillMaxWidth().height(100.dp),
-                            textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace)
-                        )
-                    }
-
-                    // Close Button
-                    Button(
-                        onClick = { showCustomBgDialog = false },
-                        modifier = Modifier.fillMaxWidth().padding(16.dp)
-                    ) {
-                        Text("Save & Close")
-                    }
-                }
-            }
-        }
-    }
-
-    // --- "KANTA PEMBESAR" GOOGLE SEARCH DIALOG ---
+    // "Kanta Pembesar" - Google Search Overlay Dialog
     if (searchNodeText != null) {
         Dialog(
             onDismissRequest = { searchNodeText = null },
             properties = DialogProperties(usePlatformDefaultWidth = false)
         ) {
             Surface(
-                modifier = Modifier.fillMaxWidth(0.9f).fillMaxHeight(0.8f).clip(RoundedCornerShape(16.dp)),
+                modifier = Modifier
+                    .fillMaxWidth(0.9f)
+                    .fillMaxHeight(0.8f)
+                    .clip(RoundedCornerShape(16.dp)),
                 color = MaterialTheme.colorScheme.surface
             ) {
                 Column(modifier = Modifier.fillMaxSize()) {
+                    // Dialog Header
                     Row(
-                        modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.primaryContainer).padding(horizontal = 16.dp, vertical = 12.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(MaterialTheme.colorScheme.primaryContainer)
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.Search, contentDescription = "Search", tint = MaterialTheme.colorScheme.onPrimaryContainer)
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text(searchNodeText ?: "", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onPrimaryContainer, maxLines = 1)
+                            Text(
+                                text = searchNodeText ?: "",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                maxLines = 1
+                            )
                         }
                         IconButton(onClick = { searchNodeText = null }, modifier = Modifier.size(24.dp)) {
                             Icon(Icons.Default.Close, contentDescription = "Close", tint = MaterialTheme.colorScheme.onPrimaryContainer)
                         }
                     }
 
+                    // Google Search WebView
                     AndroidView(
                         factory = { context ->
                             WebView(context).apply {
-                                layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+                                layoutParams = ViewGroup.LayoutParams(
+                                    ViewGroup.LayoutParams.MATCH_PARENT,
+                                    ViewGroup.LayoutParams.MATCH_PARENT
+                                )
                                 settings.javaScriptEnabled = true
                                 settings.domStorageEnabled = true
                                 webViewClient = object : WebViewClient() {
-                                    override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean { return false }
+                                    override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+                                        return false
+                                    }
                                 }
                             }
                         },
                         update = { webView ->
-                            webView.loadUrl("https://www.google.com/search?q=${Uri.encode(searchNodeText)}")
+                            val url = "https://www.google.com/search?q=${Uri.encode(searchNodeText)}"
+                            webView.loadUrl(url)
                         },
                         modifier = Modifier.weight(1f)
                     )
@@ -687,8 +555,6 @@ class WebAppInterface(private val onNodeClick: (String) -> Unit) {
 fun MermaidWebView(
     mermaidCode: String,
     theme: String,
-    customCss: String = "",
-    customHtml: String = "",
     onNodeClicked: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -722,9 +588,6 @@ fun MermaidWebView(
                     padding: 24px; 
                     background-color: transparent; 
                 }
-                /* Custom Injected Background CSS */
-                $customCss
-                
                 .mermaid { 
                     text-align: center;
                     width: max-content; 
@@ -736,10 +599,6 @@ fun MermaidWebView(
             </style>
         </head>
         <body>
-            <div id="custom-bg-wrapper" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1; pointer-events: none;">
-                $customHtml
-            </div>
-            
             <div class="mermaid">
                 $mermaidCode
             </div>
