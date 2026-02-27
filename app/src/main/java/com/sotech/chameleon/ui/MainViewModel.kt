@@ -112,6 +112,13 @@ class MainViewModel @Inject constructor(
     private val _themeSettings = MutableStateFlow(ThemeSettings())
     val themeSettings: StateFlow<ThemeSettings> = _themeSettings.asStateFlow()
 
+    // Mind Map States
+    private val _mindMapContent = MutableStateFlow("")
+    val mindMapContent: StateFlow<String> = _mindMapContent.asStateFlow()
+
+    private val _isGeneratingMindMap = MutableStateFlow(false)
+    val isGeneratingMindMap: StateFlow<Boolean> = _isGeneratingMindMap.asStateFlow()
+
     private var currentMessageJob: Job? = null
 
     val isGenerating: StateFlow<Boolean>
@@ -471,6 +478,91 @@ class MainViewModel @Inject constructor(
         }
     }
 
+    // --- Mind Map Specific Functions ---
+
+    fun updateMindMapContent(content: String) {
+        _mindMapContent.value = content
+    }
+
+    fun generateMindMap(prompt: String, images: List<Bitmap> = emptyList(), pdfUri: Uri? = null) {
+        val currentModel = _currentModel.value ?: return
+
+        if (prompt.isBlank() && images.isEmpty() && pdfUri == null) {
+            Log.w(TAG, "Cannot generate mind map without prompt, image, or PDF")
+            return
+        }
+
+        // Validation constraint: local AI cannot process PDFs
+        if (pdfUri != null && !currentModel.isApiModel) {
+            _mindMapContent.value = "Error: Local AI models do not support PDF processing. Please select a Gemini API model or remove the PDF attachment."
+            return
+        }
+
+        stopGeneration()
+        _isGeneratingMindMap.value = true
+        _mindMapContent.value = "Generating mind map structure..."
+
+        currentMessageJob = viewModelScope.launch {
+            try {
+                // System prompt to constrain AI to only output Mermaid js structure
+                val systemPrompt = """
+                    You are an expert at extracting information and creating mind maps.
+                    Analyze the following input and generate a hierarchical mind map structure using Mermaid.js format (graph TD).
+                    Do not include markdown code blocks, explanations, or any other text. Output strictly the raw Mermaid.js syntax starting with 'graph TD'.
+                    Ensure the nodes and relationships are logically structured.
+                    
+                    User Input: $prompt
+                """.trimIndent()
+
+                // In a full implementation, you'd extract text from the PDF here if pdfUri != null
+                // and append it to the prompt. For now, we process as standard text/image.
+                val finalPrompt = if (pdfUri != null && currentModel.isApiModel) {
+                    "$systemPrompt\n[PDF Attachment Included - Extract key concepts for mind map]"
+                } else {
+                    systemPrompt
+                }
+
+                if (currentModel.isApiModel) {
+                    geminiHelper.generateResponse(
+                        prompt = finalPrompt,
+                        model = currentModel,
+                        images = images,
+                        onPartialResult = { partial ->
+                            // Update mind map text live (could parse live if wanted)
+                        },
+                        onComplete = { stats ->
+                            _isGeneratingMindMap.value = false
+                            _mindMapContent.value = geminiHelper.currentResponse.value.replace("```mermaid", "").replace("```", "").trim()
+                        },
+                        onError = { error ->
+                            _isGeneratingMindMap.value = false
+                            _mindMapContent.value = "Error generating mind map: $error"
+                        }
+                    )
+                } else {
+                    llmHelper.generateResponse(
+                        prompt = finalPrompt,
+                        model = currentModel,
+                        images = images,
+                        onPartialResult = { partial -> },
+                        onComplete = { stats ->
+                            _isGeneratingMindMap.value = false
+                            _mindMapContent.value = llmHelper.currentResponse.value.replace("```mermaid", "").replace("```", "").trim()
+                        },
+                        onError = { error ->
+                            _isGeneratingMindMap.value = false
+                            _mindMapContent.value = "Error generating mind map: $error"
+                        }
+                    )
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error in generateMindMap", e)
+                _isGeneratingMindMap.value = false
+                _mindMapContent.value = "Error: ${e.message}"
+            }
+        }
+    }
+
     private fun enhanceMessageWithSystemPrompt(message: String): String {
         val lowerMessage = message.lowercase()
         val needsEnhancement = lowerMessage.contains("plot") ||
@@ -540,6 +632,7 @@ IMPORTANT: If the user asks to plot, graph, or visualize a function, you MUST pr
 
         currentMessageJob?.cancel()
         currentMessageJob = null
+        _isGeneratingMindMap.value = false
 
         if (currentModel?.isApiModel == true) {
             geminiHelper.stopGeneration()

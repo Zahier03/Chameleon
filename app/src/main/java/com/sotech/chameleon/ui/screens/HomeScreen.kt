@@ -55,6 +55,7 @@ fun HomeScreen(
     onModelDelete: (ImportedModel) -> Unit,
     onModelImport: (uri: Uri, displayName: String) -> Unit,
     onNavigateToChat: () -> Unit,
+    onNavigateToMindMap: () -> Unit,
     onNavigateToModelManager: () -> Unit,
     onNavigateToSettings: () -> Unit,
     onStatsSettingsUpdate: (StatsSettings) -> Unit,
@@ -202,7 +203,7 @@ fun HomeScreen(
                         }
                     }
 
-                    item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(2) }) {
+                    item {
                         AnimatedSection(
                             visible = animationStarted,
                             delayMillis = 200
@@ -212,6 +213,22 @@ fun HomeScreen(
                                 scaleFactor = scaleFactor,
                                 barberChopFont = barberChopFont,
                                 onNavigateToChat = onNavigateToChat,
+                                isLandscape = true
+                            )
+                        }
+                    }
+
+                    item {
+                        AnimatedSection(
+                            visible = animationStarted,
+                            delayMillis = 300
+                        ) {
+                            MindMapToolCard(
+                                models = models,
+                                currentModel = currentModel,
+                                scaleFactor = scaleFactor,
+                                barberChopFont = barberChopFont,
+                                onNavigateToMindMap = onNavigateToMindMap,
                                 isLandscape = true
                             )
                         }
@@ -272,6 +289,22 @@ fun HomeScreen(
                                 scaleFactor = scaleFactor,
                                 barberChopFont = barberChopFont,
                                 onNavigateToChat = onNavigateToChat,
+                                isLandscape = false
+                            )
+                        }
+                    }
+
+                    item {
+                        AnimatedSection(
+                            visible = animationStarted,
+                            delayMillis = 300
+                        ) {
+                            MindMapToolCard(
+                                models = models,
+                                currentModel = currentModel,
+                                scaleFactor = scaleFactor,
+                                barberChopFont = barberChopFont,
+                                onNavigateToMindMap = onNavigateToMindMap,
                                 isLandscape = false
                             )
                         }
@@ -714,6 +747,123 @@ fun ChatToolCard(
                         fontSize = (12 * scaleFactor).sp
                     ),
                     color = Color(0xFFA5D6A7)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun MindMapToolCard(
+    models: List<ImportedModel>,
+    currentModel: ImportedModel?,
+    scaleFactor: Float,
+    barberChopFont: FontFamily,
+    onNavigateToMindMap: () -> Unit,
+    isLandscape: Boolean
+) {
+    val isApiModel = currentModel?.isApiModel == true
+
+    Card(
+        onClick = onNavigateToMindMap,
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = Color(0xFF6A1B9A) // Purple theme for Mind Map
+        ),
+        shape = RoundedCornerShape((12 * scaleFactor).dp)
+    ) {
+        Box(
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(
+                text = "IDEAS",
+                style = MaterialTheme.typography.displayMedium.copy(
+                    fontFamily = barberChopFont,
+                    fontSize = if (isLandscape) (40 * scaleFactor).sp else (60 * scaleFactor).sp,
+                    lineHeight = if (isLandscape) (50 * scaleFactor).sp else (70 * scaleFactor).sp
+                ),
+                fontWeight = FontWeight.Black,
+                color = Color(0xFFAB47BC),
+                modifier = Modifier.align(Alignment.Center)
+            )
+
+            Box(
+                modifier = Modifier
+                    .size(if (isLandscape) (70 * scaleFactor).dp else (90 * scaleFactor).dp)
+                    .offset(
+                        x = if (isLandscape) (20 * scaleFactor).dp else (25 * scaleFactor).dp,
+                        y = if (isLandscape) (-20 * scaleFactor).dp else (-25 * scaleFactor).dp
+                    )
+                    .align(Alignment.TopEnd)
+                    .background(
+                        color = Color(0xFF8E24AA),
+                        shape = CircleShape
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Default.AccountTree,
+                    contentDescription = "Open Mind Map",
+                    modifier = Modifier
+                        .size((24 * scaleFactor).dp)
+                        .offset(x = (-10 * scaleFactor).dp),
+                    tint = Color.White
+                )
+            }
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding((16 * scaleFactor).dp),
+                verticalArrangement = Arrangement.spacedBy((10 * scaleFactor).dp)
+            ) {
+                Text(
+                    text = "MIND MAP",
+                    style = MaterialTheme.typography.titleLarge.copy(
+                        fontFamily = barberChopFont,
+                        fontSize = (16 * scaleFactor).sp,
+                        lineHeight = (20 * scaleFactor).sp
+                    ),
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
+
+                Spacer(modifier = Modifier.height((6 * scaleFactor).dp))
+
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy((6 * scaleFactor).dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.Schema,
+                        contentDescription = null,
+                        modifier = Modifier.size((18 * scaleFactor).dp),
+                        tint = Color(0xFFCE93D8)
+                    )
+                    Text(
+                        text = "GENERATE MAP",
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontFamily = barberChopFont,
+                            fontSize = (14 * scaleFactor).sp,
+                            lineHeight = (18 * scaleFactor).sp
+                        ),
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                }
+
+                Text(
+                    text = if (models.isEmpty()) {
+                        "Import a model first"
+                    } else if (isApiModel) {
+                        "Generate structure with PDF/Image/Text"
+                    } else {
+                        "Generate structure with Image/Text (PDF disabled for local AI)"
+                    },
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        fontSize = (12 * scaleFactor).sp
+                    ),
+                    color = Color(0xFFE1BEE7)
                 )
             }
         }

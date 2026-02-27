@@ -21,6 +21,7 @@ mediapipeTasksGenai = "0.10.27"
 commonmark = "1.0.0-alpha02"
 richtext = "1.0.0-alpha02"
 litertlm = "0.0.0-alpha03"
+foundation = "1.10.3"
 
 [libraries]
 litertlm = { group = "com.google.ai.edge.litertlm", name = "litertlm", version.ref = "litertlm" }
@@ -50,6 +51,7 @@ hilt-android-compiler = { module = "com.google.dagger:hilt-android-compiler", ve
 mediapipe-tasks-genai = { group = "com.google.mediapipe", name = "tasks-genai", version.ref = "mediapipeTasksGenai" }
 richtext-commonmark = { group = "com.halilibo.compose-richtext", name = "richtext-commonmark", version.ref = "commonmark" }
 richtext-ui-material3 = { group = "com.halilibo.compose-richtext", name = "richtext-ui-material3", version.ref = "richtext" }
+androidx-compose-foundation = { group = "androidx.compose.foundation", name = "foundation", version.ref = "foundation" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

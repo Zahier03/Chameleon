@@ -75,7 +75,10 @@ android {
 
 chaquopy {
     defaultConfig {
-        version = "3.8"
+        version = "3.12"
+
+        buildPython("py", "-3.12")
+
         pip {
             install("numpy")
             install("matplotlib")
@@ -120,6 +123,7 @@ dependencies {
     implementation("org.jetbrains.kotlin:kotlin-scripting-jsr223:1.9.20")
     implementation("com.github.javaparser:javaparser-core:3.25.7")
     implementation("org.python:jython-standalone:2.7.3")
+    implementation(libs.androidx.compose.foundation)
 
     kapt(libs.hilt.android.compiler)
     implementation("io.coil-kt:coil-compose:2.4.0")
