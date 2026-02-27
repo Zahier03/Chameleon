@@ -4,7 +4,6 @@ import android.content.res.Configuration
 import android.net.Uri
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -26,13 +25,13 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalUriHandler
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
 import com.sotech.chameleon.R
 import com.sotech.chameleon.data.ImportedModel
 import com.sotech.chameleon.data.MessageStatsSummary
@@ -63,8 +62,10 @@ fun HomeScreen(
 ) {
     var animationStarted by remember { mutableStateOf(false) }
     var showStatsSettings by remember { mutableStateOf(false) }
-    var currentTime by remember { mutableStateOf(Calendar.getInstance()) }
-    var carouselIndex by remember { mutableStateOf(0) }
+
+    // OPTIMIZATION: Use a primitive Long to prevent allocating a new Calendar object every second
+    var currentTimeMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    var carouselIndex by remember { mutableIntStateOf(0) }
     val uriHandler = LocalUriHandler.current
 
     val configuration = LocalConfiguration.current
@@ -95,8 +96,8 @@ fun HomeScreen(
 
     LaunchedEffect(Unit) {
         while (true) {
-            currentTime = Calendar.getInstance()
             delay(1000)
+            currentTimeMs = System.currentTimeMillis()
         }
     }
 
@@ -176,7 +177,7 @@ fun HomeScreen(
                         ) {
                             HeroCarousel(
                                 carouselIndex = carouselIndex,
-                                currentTime = currentTime,
+                                currentTimeMs = currentTimeMs,
                                 scaleFactor = scaleFactor,
                                 barberChopFont = barberChopFont,
                                 uriHandler = uriHandler,
@@ -252,7 +253,7 @@ fun HomeScreen(
                         ) {
                             HeroCarousel(
                                 carouselIndex = carouselIndex,
-                                currentTime = currentTime,
+                                currentTimeMs = currentTimeMs,
                                 scaleFactor = scaleFactor,
                                 barberChopFont = barberChopFont,
                                 uriHandler = uriHandler,
@@ -329,7 +330,7 @@ fun HomeScreen(
 @Composable
 fun HeroCarousel(
     carouselIndex: Int,
-    currentTime: Calendar,
+    currentTimeMs: Long,
     scaleFactor: Float,
     barberChopFont: FontFamily,
     uriHandler: androidx.compose.ui.platform.UriHandler,
@@ -357,8 +358,9 @@ fun HeroCarousel(
             when (index) {
                 0 -> {
                     Box(modifier = Modifier.fillMaxSize()) {
-                        Image(
-                            painter = painterResource(id = R.drawable.robot),
+                        // OPTIMIZATION: AsyncImage prevents blocking the main thread during image decoding
+                        AsyncImage(
+                            model = R.drawable.robot,
                             contentDescription = "Hero Image",
                             contentScale = ContentScale.Crop,
                             modifier = Modifier.fillMaxSize()
@@ -372,13 +374,13 @@ fun HeroCarousel(
                             verticalArrangement = Arrangement.spacedBy((6 * scaleFactor).dp)
                         ) {
                             DigitalClock(
-                                time = currentTime,
+                                timeMs = currentTimeMs,
                                 font = barberChopFont,
                                 scaleFactor = scaleFactor,
                                 isLandscape = isLandscape
                             )
                             DateDisplay(
-                                time = currentTime,
+                                timeMs = currentTimeMs,
                                 font = barberChopFont,
                                 scaleFactor = scaleFactor,
                                 isLandscape = isLandscape
@@ -417,8 +419,9 @@ fun HeroCarousel(
                                     .fillMaxSize()
                                     .padding((16 * scaleFactor).dp)
                             ) {
-                                Image(
-                                    painter = painterResource(id = R.drawable.litert),
+                                // OPTIMIZATION: AsyncImage instead of painterResource
+                                AsyncImage(
+                                    model = R.drawable.litert,
                                     contentDescription = "LiteRT Logo",
                                     contentScale = ContentScale.Fit,
                                     modifier = Modifier
@@ -872,13 +875,14 @@ fun MindMapToolCard(
 
 @Composable
 fun DigitalClock(
-    time: Calendar,
+    timeMs: Long,
     font: FontFamily,
     scaleFactor: Float,
     isLandscape: Boolean
 ) {
-    val timeFormat = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
-    val timeString = timeFormat.format(time.time)
+    // OPTIMIZATION: Only recreate the format object ONCE, rather than every 1 second during recomposition.
+    val timeFormat = remember { SimpleDateFormat("HH:mm:ss", Locale.getDefault()) }
+    val timeString = timeFormat.format(timeMs)
 
     Box {
         Text(
@@ -928,15 +932,16 @@ fun DigitalClock(
 
 @Composable
 fun DateDisplay(
-    time: Calendar,
+    timeMs: Long,
     font: FontFamily,
     scaleFactor: Float,
     isLandscape: Boolean
 ) {
-    val dateFormat = SimpleDateFormat("MMMM dd, yyyy", Locale.getDefault())
-    val dayFormat = SimpleDateFormat("EEEE", Locale.getDefault())
-    val dateString = dateFormat.format(time.time)
-    val dayString = dayFormat.format(time.time)
+    // OPTIMIZATION: Formatters instantiated only once
+    val dateFormat = remember { SimpleDateFormat("MMMM dd, yyyy", Locale.getDefault()) }
+    val dayFormat = remember { SimpleDateFormat("EEEE", Locale.getDefault()) }
+    val dateString = dateFormat.format(timeMs)
+    val dayString = dayFormat.format(timeMs)
     val fullString = "$dateString | $dayString"
 
     Box {

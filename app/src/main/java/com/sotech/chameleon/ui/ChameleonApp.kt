@@ -226,6 +226,9 @@ fun ChameleonApp(
                         viewModel = viewModel,
                         onBack = {
                             navController.popBackStack()
+                        },
+                        onOpenModelSelector = {
+                            navController.navigate("models?fromChat=true")
                         }
                     )
                 }
@@ -464,6 +467,9 @@ fun ChameleonApp(
                         viewModel = viewModel,
                         onBack = {
                             navController.popBackStack()
+                        },
+                        onOpenModelSelector = {
+                            navController.navigate("models?fromChat=true")
                         }
                     )
                 }
