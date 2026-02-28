@@ -7,6 +7,7 @@ import android.graphics.ImageDecoder
 import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
+import android.provider.OpenableColumns
 import android.print.PrintAttributes
 import android.print.PrintManager
 import android.view.ViewGroup
@@ -74,7 +75,7 @@ fun MindMapScreen(
 
     var promptText by remember { mutableStateOf("") }
     var selectedImages by remember { mutableStateOf<List<Uri>>(emptyList()) }
-    var selectedPdf by remember { mutableStateOf<Uri?>(null) }
+    var selectedPdfs by remember { mutableStateOf<List<Uri>>(emptyList()) }
     var editableContent by remember { mutableStateOf(mindMapContent) }
     var showCodeEditor by remember { mutableStateOf(false) }
 
@@ -125,9 +126,10 @@ fun MindMapScreen(
         if (uris.isNotEmpty()) isInputExpanded = true
     }
 
-    val pdfPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        selectedPdf = uri
-        if (uri != null) isInputExpanded = true
+    val pdfPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
+        val newPdfs = (selectedPdfs + uris).take(2) // Limit to max 2 PDFs
+        selectedPdfs = newPdfs
+        if (newPdfs.isNotEmpty()) isInputExpanded = true
     }
 
     val backgroundColors = listOf(
@@ -214,7 +216,6 @@ fun MindMapScreen(
                         Icon(Icons.Default.Settings, contentDescription = "Model Settings")
                     }
 
-                    // Always show the 3-dot menu if we aren't generating, so user can access History
                     if (!isGenerating) {
                         Box {
                             IconButton(onClick = { isMenuExpanded = true }) {
@@ -225,7 +226,6 @@ fun MindMapScreen(
                                 expanded = isMenuExpanded,
                                 onDismissRequest = { isMenuExpanded = false }
                             ) {
-                                // Only show these if there is an active map
                                 if (editableContent.isNotBlank()) {
                                     DropdownMenuItem(
                                         text = { Text(if (showCodeEditor) "Show Map View" else "Edit Mermaid Code") },
@@ -252,7 +252,6 @@ fun MindMapScreen(
                                     )
                                 }
 
-                                // ALWAYS SHOW VERSION HISTORY
                                 DropdownMenuItem(
                                     text = { Text("Version History & Connect") },
                                     onClick = {
@@ -372,7 +371,7 @@ fun MindMapScreen(
                             }
                         }
 
-                        AnimatedVisibility(visible = selectedImages.isNotEmpty() || selectedPdf != null) {
+                        AnimatedVisibility(visible = selectedImages.isNotEmpty() || selectedPdfs.isNotEmpty()) {
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -380,10 +379,11 @@ fun MindMapScreen(
                                     .padding(bottom = 8.dp),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                selectedPdf?.let {
+                                selectedPdfs.forEach { pdfUri ->
+                                    val fileName = getFileName(context, pdfUri)
                                     AssistChip(
-                                        onClick = { selectedPdf = null },
-                                        label = { Text("PDF Attached") },
+                                        onClick = { selectedPdfs = selectedPdfs.filter { it != pdfUri } },
+                                        label = { Text(fileName, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 120.dp)) },
                                         trailingIcon = { Icon(Icons.Default.Close, contentDescription = "Remove PDF", modifier = Modifier.size(16.dp)) },
                                         colors = AssistChipDefaults.assistChipColors(leadingIconContentColor = MaterialTheme.colorScheme.error)
                                     )
@@ -446,13 +446,13 @@ fun MindMapScreen(
                                             }
                                         } catch (e: Exception) { null }
                                     }
-                                    viewModel.generateMindMap(promptText, bitmaps, selectedPdf)
+                                    viewModel.generateMindMap(promptText, bitmaps, selectedPdfs)
                                     showCodeEditor = false
                                     keyboardController?.hide()
                                     isInputExpanded = false
                                     connectedPrintMaps = emptyList()
                                 },
-                                enabled = isModelReady && !isGenerating && (promptText.isNotBlank() || selectedImages.isNotEmpty() || selectedPdf != null),
+                                enabled = isModelReady && !isGenerating && (promptText.isNotBlank() || selectedImages.isNotEmpty() || selectedPdfs.isNotEmpty()),
                                 modifier = Modifier.size(48.dp),
                                 colors = IconButtonDefaults.filledIconButtonColors(
                                     containerColor = MaterialTheme.colorScheme.primary
@@ -482,119 +482,119 @@ fun MindMapScreen(
                 .background(MaterialTheme.colorScheme.background)
         ) {
 
-            AnimatedVisibility(visible = editableContent.isNotBlank() && !showCodeEditor && isModelReady) {
-                ElevatedCard(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp)
-                        .animateContentSize(animationSpec = tween(300)),
-                    shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.elevatedCardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                    ),
-                    elevation = CardDefaults.elevatedCardElevation(defaultElevation = 0.dp)
-                ) {
-                    Column(
+            AnimatedVisibility(visible = editableContent.isNotBlank() && isModelReady) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 12.dp)
+                            .padding(horizontal = 16.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { isStylingExpanded = !isStylingExpanded },
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    Icons.Default.Brush,
-                                    contentDescription = "Style",
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = "Design & Aesthetics",
-                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                            }
-                            Icon(
-                                imageVector = if (isStylingExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                                contentDescription = "Toggle Styling",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                        TextButton(onClick = { isStylingExpanded = !isStylingExpanded }) {
+                            Icon(Icons.Default.Brush, contentDescription = null)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Design & Aesthetics")
                         }
 
-                        if (isStylingExpanded) {
-                            Spacer(modifier = Modifier.height(16.dp))
+                        Button(
+                            onClick = { viewModel.fixMindMapSyntax(editableContent) },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.error,
+                                contentColor = MaterialTheme.colorScheme.onError
+                            ),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                            modifier = Modifier.height(36.dp),
+                            enabled = !isGenerating
+                        ) {
+                            Icon(Icons.Default.Build, contentDescription = "Fix", modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("Fix It", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
 
-                            Button(
-                                onClick = { showAiStyleDialog = true },
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(16.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = MaterialTheme.colorScheme.tertiary,
-                                    contentColor = MaterialTheme.colorScheme.onTertiary
-                                )
+                    AnimatedVisibility(visible = isStylingExpanded) {
+                        ElevatedCard(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 4.dp),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = CardDefaults.elevatedCardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                            ),
+                            elevation = CardDefaults.elevatedCardElevation(defaultElevation = 0.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp)
                             ) {
-                                Icon(Icons.Default.Star, contentDescription = "AI Magic")
-                                Spacer(Modifier.width(8.dp))
-                                Text("Ask AI to Style Map", fontWeight = FontWeight.Bold)
-                            }
-
-                            Spacer(modifier = Modifier.height(16.dp))
-
-                            Text("Map Theme", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Row(
-                                modifier = Modifier.horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                mermaidThemes.forEach { theme ->
-                                    FilterChip(
-                                        selected = mindMapTheme == theme,
-                                        onClick = { mindMapTheme = theme },
-                                        label = { Text(theme.replaceFirstChar { it.uppercase() }) },
-                                        shape = RoundedCornerShape(12.dp),
-                                        colors = FilterChipDefaults.filterChipColors(
-                                            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                                            selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
-                                        )
+                                Button(
+                                    onClick = { showAiStyleDialog = true },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(16.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = MaterialTheme.colorScheme.tertiary,
+                                        contentColor = MaterialTheme.colorScheme.onTertiary
                                     )
+                                ) {
+                                    Icon(Icons.Default.Star, contentDescription = "AI Magic")
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("Ask AI to Style Map", fontWeight = FontWeight.Bold)
                                 }
-                            }
 
-                            Spacer(modifier = Modifier.height(12.dp))
+                                Spacer(modifier = Modifier.height(16.dp))
 
-                            Text("Canvas Background", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Row(
-                                modifier = Modifier.horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                backgroundColors.forEach { color ->
-                                    Box(
-                                        modifier = Modifier
-                                            .size(36.dp)
-                                            .clip(CircleShape)
-                                            .background(if (color == Color.Transparent) MaterialTheme.colorScheme.surface else color)
-                                            .border(
-                                                width = 2.dp,
-                                                color = if (mindMapBackgroundColor == color) MaterialTheme.colorScheme.primary else Color.Gray.copy(alpha = 0.2f),
-                                                shape = CircleShape
+                                Text("Map Theme", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Row(
+                                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    mermaidThemes.forEach { theme ->
+                                        FilterChip(
+                                            selected = mindMapTheme == theme,
+                                            onClick = { mindMapTheme = theme },
+                                            label = { Text(theme.replaceFirstChar { it.uppercase() }) },
+                                            shape = RoundedCornerShape(12.dp),
+                                            colors = FilterChipDefaults.filterChipColors(
+                                                selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                                selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
                                             )
-                                            .clickable { mindMapBackgroundColor = color },
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        if (color == Color.Transparent) {
-                                            Icon(Icons.Default.Clear, contentDescription = "Clear", modifier = Modifier.size(20.dp), tint = Color.Gray)
-                                        }
-                                        if (mindMapBackgroundColor == color) {
-                                            Icon(Icons.Default.Check, contentDescription = "Selected", modifier = Modifier.size(16.dp), tint = if (color == Color.Transparent || color == Color(0xFF1E1E1E)) MaterialTheme.colorScheme.primary else Color.Black.copy(alpha = 0.6f))
+                                        )
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(12.dp))
+
+                                Text("Canvas Background", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Row(
+                                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    backgroundColors.forEach { color ->
+                                        Box(
+                                            modifier = Modifier
+                                                .size(36.dp)
+                                                .clip(CircleShape)
+                                                .background(if (color == Color.Transparent) MaterialTheme.colorScheme.surface else color)
+                                                .border(
+                                                    width = 2.dp,
+                                                    color = if (mindMapBackgroundColor == color) MaterialTheme.colorScheme.primary else Color.Gray.copy(alpha = 0.2f),
+                                                    shape = CircleShape
+                                                )
+                                                .clickable { mindMapBackgroundColor = color },
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            if (color == Color.Transparent) {
+                                                Icon(Icons.Default.Clear, contentDescription = "Clear", modifier = Modifier.size(20.dp), tint = Color.Gray)
+                                            }
+                                            if (mindMapBackgroundColor == color) {
+                                                Icon(Icons.Default.Check, contentDescription = "Selected", modifier = Modifier.size(16.dp), tint = if (color == Color.Transparent || color == Color(0xFF1E1E1E)) MaterialTheme.colorScheme.primary else Color.Black.copy(alpha = 0.6f))
+                                            }
                                         }
                                     }
                                 }
@@ -880,7 +880,7 @@ fun MindMapScreen(
                         } else {
                             "Redesign the current mind map with this aesthetic style: $aiStylePrompt. Please update node names with appropriate emojis if requested."
                         }
-                        viewModel.generateMindMap(magicPrompt, emptyList(), null)
+                        viewModel.generateMindMap(magicPrompt, emptyList(), emptyList())
                         isStylingExpanded = false
                         connectedPrintMaps = emptyList()
                     },
@@ -987,8 +987,11 @@ fun MermaidWebView(
         <!DOCTYPE html>
         <html>
         <head>
-            <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=10.0, user-scalable=yes">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
             <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+            
+            <script src="https://cdn.jsdelivr.net/npm/panzoom@9.4.0/dist/panzoom.min.js"></script>
+            
             <script type="module">
                 import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
                 mermaid.initialize({ 
@@ -1000,8 +1003,19 @@ fun MermaidWebView(
                 });
                 
                 const observer = new MutationObserver((mutations, obs) => {
-                    const nodes = document.querySelectorAll('.node');
-                    if (nodes.length > 0) {
+                    const mermaidDiv = document.querySelector('.mermaid');
+                    const svg = document.querySelector('.mermaid svg');
+                    
+                    if (svg && mermaidDiv) {
+                        // Apply PanZoom Engine. This bypasses Android limits completely.
+                        panzoom(mermaidDiv, {
+                            maxZoom: 1000, // Practically infinite zoom (1000x)
+                            minZoom: 0.05,
+                            bounds: false, // Allows you to drag the canvas infinitely anywhere
+                            smoothScroll: false
+                        });
+
+                        const nodes = document.querySelectorAll('.node');
                         nodes.forEach(node => {
                             node.style.cursor = 'pointer';
                             node.addEventListener('click', function(e) {
@@ -1017,9 +1031,12 @@ fun MermaidWebView(
             <style>
                 body { 
                     margin: 0; 
-                    padding: 24px; 
+                    padding: 0; 
                     background-color: transparent; 
                     font-family: 'Roboto', sans-serif;
+                    overflow: hidden; /* Stop native scrolling to let panzoom glide smoothly */
+                    width: 100vw;
+                    height: 100vh;
                 }
                 .pdf-header {
                     display: none; 
@@ -1027,6 +1044,22 @@ fun MermaidWebView(
                 .page-break {
                     display: none;
                 }
+                .mermaid { 
+                    width: 100%;
+                    height: 100%;
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    cursor: grab;
+                }
+                .mermaid:active {
+                    cursor: grabbing;
+                }
+                .mermaid svg { 
+                    max-width: none !important; 
+                    max-height: none !important;
+                }
+                
                 @media print {
                     @page {
                         margin: 10mm; 
@@ -1040,6 +1073,9 @@ fun MermaidWebView(
                         align-items: center;
                         -webkit-print-color-adjust: exact !important;
                         color-adjust: exact !important;
+                        overflow: visible;
+                        width: auto;
+                        height: auto;
                     }
                     * {
                         -webkit-user-select: text !important;
@@ -1077,6 +1113,7 @@ fun MermaidWebView(
                         display: flex;
                         justify-content: center;
                         margin-bottom: 20px;
+                        transform: none !important; /* Ensure printing resets zoom */
                     }
                     .mermaid svg {
                         max-width: 100% !important;
@@ -1091,14 +1128,6 @@ fun MermaidWebView(
                     text, .edgeLabel, .nodeLabel {
                         font-family: 'Roboto', sans-serif !important;
                     }
-                }
-                .mermaid { 
-                    text-align: center;
-                    width: max-content; 
-                    min-width: 100%;
-                }
-                .mermaid svg { 
-                    max-width: none !important; 
                 }
             </style>
         </head>
@@ -1124,9 +1153,11 @@ fun MermaidWebView(
 
                 addJavascriptInterface(WebAppInterface(onNodeClicked), "AndroidInterface")
 
-                settings.setSupportZoom(true)
-                settings.builtInZoomControls = true
+                // Disabled all Native Zoom Controls. We are using JS PanZoom now.
+                settings.setSupportZoom(false)
+                settings.builtInZoomControls = false
                 settings.displayZoomControls = false
+
                 settings.useWideViewPort = true
                 settings.loadWithOverviewMode = true
 
@@ -1142,4 +1173,27 @@ fun MermaidWebView(
         },
         modifier = modifier
     )
+}
+
+@SuppressLint("Range")
+private fun getFileName(context: Context, uri: Uri): String {
+    var result: String? = null
+    if (uri.scheme == "content") {
+        val cursor = context.contentResolver.query(uri, null, null, null, null)
+        try {
+            if (cursor != null && cursor.moveToFirst()) {
+                result = cursor.getString(cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME))
+            }
+        } finally {
+            cursor?.close()
+        }
+    }
+    if (result == null) {
+        result = uri.path
+        val cut = result?.lastIndexOf('/') ?: -1
+        if (cut != -1) {
+            result = result?.substring(cut + 1)
+        }
+    }
+    return result ?: "Document.pdf"
 }

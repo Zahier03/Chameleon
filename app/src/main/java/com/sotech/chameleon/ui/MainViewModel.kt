@@ -561,15 +561,15 @@ class MainViewModel @Inject constructor(
         _mindMapContent.value = content
     }
 
-    fun generateMindMap(prompt: String, images: List<Bitmap> = emptyList(), pdfUri: Uri? = null) {
+    fun generateMindMap(prompt: String, images: List<Bitmap> = emptyList(), pdfUris: List<Uri> = emptyList()) {
         val currentModel = _currentModel.value ?: return
 
-        if (prompt.isBlank() && images.isEmpty() && pdfUri == null) {
+        if (prompt.isBlank() && images.isEmpty() && pdfUris.isEmpty()) {
             Log.w(TAG, "Cannot generate mind map without prompt, image, or PDF")
             return
         }
 
-        if (pdfUri != null && !currentModel.isApiModel) {
+        if (pdfUris.isNotEmpty() && !currentModel.isApiModel) {
             _mindMapContent.value = "Error: Local AI models do not support PDF processing. Please select a Gemini API model or remove the PDF attachment."
             return
         }
@@ -580,19 +580,47 @@ class MainViewModel @Inject constructor(
 
         currentMessageJob = viewModelScope.launch {
             try {
+                // FIXED PROMPT: Enforcing quotation marks globally for Mermaid robustness
                 val systemPrompt = """
                     You are an expert at extracting information and creating mind maps.
                     Analyze the following input and generate a hierarchical mind map structure using Mermaid.js format (graph TD).
                     Do not include markdown code blocks, explanations, or any other text. Output strictly the raw Mermaid.js syntax starting with 'graph TD'.
                     Ensure the nodes and relationships are logically structured.
                     
+                    CRITICAL SYNTAX RULE - YOU MUST FOLLOW THIS:
+                    You MUST wrap EVERY node's text label in double quotes to prevent syntax errors with mathematical symbols, slashes, hyphens, and special characters.
+                    Example of CORRECT format: 
+                    A["Introduction"] --> B{"Core Concept"}
+                    B --> C["Formula: x/y + z = 1"]
+                    
+                    Example of WRONG format (DO NOT DO THIS): 
+                    A[Introduction] --> B{Core Concept}
+                    B --> C[Formula: x/y + z = 1]
+                    
+                    Never output text inside brackets without wrapping them in double quotes `["..."]` or `{"..."}`.
+                    
                     User Input: $prompt
                 """.trimIndent()
 
-                val finalPrompt = if (pdfUri != null && currentModel.isApiModel) {
-                    "$systemPrompt\n[PDF Attachment Included - Extract key concepts for mind map]"
+                val finalPrompt = if (pdfUris.isNotEmpty() && currentModel.isApiModel) {
+                    "$systemPrompt\n[PDF Attachments Included - Extract key concepts for mind map]"
                 } else {
                     systemPrompt
+                }
+
+                // Read and Encode PDFs to Base64 for Gemini API
+                val pdfBase64s = mutableListOf<String>()
+                if (pdfUris.isNotEmpty() && currentModel.isApiModel) {
+                    for (uri in pdfUris) {
+                        try {
+                            context.contentResolver.openInputStream(uri)?.use { stream ->
+                                val bytes = stream.readBytes()
+                                pdfBase64s.add(android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP))
+                            }
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Failed to read PDF: $uri", e)
+                        }
+                    }
                 }
 
                 if (currentModel.isApiModel) {
@@ -600,6 +628,7 @@ class MainViewModel @Inject constructor(
                         prompt = finalPrompt,
                         model = currentModel,
                         images = images,
+                        pdfBase64s = pdfBase64s,
                         onPartialResult = { partial ->
                         },
                         onComplete = { stats ->
@@ -631,6 +660,65 @@ class MainViewModel @Inject constructor(
                 Log.e(TAG, "Error in generateMindMap", e)
                 _isGeneratingMindMap.value = false
                 _mindMapContent.value = "Error: ${e.message}"
+            }
+        }
+    }
+
+    fun fixMindMapSyntax(brokenCode: String) {
+        val currentModel = _currentModel.value ?: return
+
+        stopGeneration()
+        _isGeneratingMindMap.value = true
+        _mindMapContent.value = "Fixing syntax error..."
+
+        currentMessageJob = viewModelScope.launch {
+            try {
+                val systemPrompt = """
+                    The following Mermaid.js graph TD code has a syntax error. 
+                    Please fix it and return ONLY the valid Mermaid.js code starting with 'graph TD'.
+                    Do not include markdown code blocks, explanations, or any other text.
+                    CRITICAL: You MUST wrap EVERY node's text label in double quotes to prevent syntax errors (e.g., A["Label text"] --> B{"Another label"}).
+                    
+                    Broken Code:
+                    $brokenCode
+                """.trimIndent()
+
+                if (currentModel.isApiModel) {
+                    geminiHelper.generateResponse(
+                        prompt = systemPrompt,
+                        model = currentModel,
+                        images = emptyList(),
+                        pdfBase64s = emptyList(),
+                        onPartialResult = { },
+                        onComplete = { stats ->
+                            _isGeneratingMindMap.value = false
+                            _mindMapContent.value = geminiHelper.currentResponse.value.replace("```mermaid", "").replace("```", "").trim()
+                        },
+                        onError = { error ->
+                            _isGeneratingMindMap.value = false
+                            _mindMapContent.value = "Error fixing map: $error\n\nOriginal Code:\n$brokenCode"
+                        }
+                    )
+                } else {
+                    llmHelper.generateResponse(
+                        prompt = systemPrompt,
+                        model = currentModel,
+                        images = emptyList(),
+                        onPartialResult = { },
+                        onComplete = { stats ->
+                            _isGeneratingMindMap.value = false
+                            _mindMapContent.value = llmHelper.currentResponse.value.replace("```mermaid", "").replace("```", "").trim()
+                        },
+                        onError = { error ->
+                            _isGeneratingMindMap.value = false
+                            _mindMapContent.value = "Error fixing map: $error\n\nOriginal Code:\n$brokenCode"
+                        }
+                    )
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error in fixMindMapSyntax", e)
+                _isGeneratingMindMap.value = false
+                _mindMapContent.value = "Error: ${e.message}\n\nOriginal Code:\n$brokenCode"
             }
         }
     }

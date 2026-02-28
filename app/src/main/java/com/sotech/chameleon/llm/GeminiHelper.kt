@@ -38,6 +38,7 @@ class GeminiHelper @Inject constructor() {
         prompt: String,
         model: ImportedModel,
         images: List<Bitmap> = emptyList(),
+        pdfBase64s: List<String> = emptyList(),
         onPartialResult: (String) -> Unit,
         onComplete: (MessageStats?) -> Unit,
         onError: (String) -> Unit
@@ -72,6 +73,17 @@ class GeminiHelper @Inject constructor() {
                                 })
                             }
 
+                            if (pdfBase64s.isNotEmpty()) {
+                                for (pdfBase64 in pdfBase64s) {
+                                    put(JSONObject().apply {
+                                        put("inlineData", JSONObject().apply {
+                                            put("mimeType", "application/pdf")
+                                            put("data", pdfBase64)
+                                        })
+                                    })
+                                }
+                            }
+
                             if (images.isNotEmpty()) {
                                 for (bitmap in images) {
                                     try {
@@ -98,7 +110,7 @@ class GeminiHelper @Inject constructor() {
                 })
             }
 
-            Log.d(TAG, "Sending request to Gemini API: ${model.modelCode} with ${images.size} images")
+            Log.d(TAG, "Sending request to Gemini API: ${model.modelCode} with ${images.size} images and ${pdfBase64s.size} PDFs")
 
             val writer = OutputStreamWriter(connection.outputStream)
             writer.write(requestBody.toString())
@@ -215,7 +227,6 @@ class GeminiHelper @Inject constructor() {
                         if (errorJson.has("error")) {
                             val error = errorJson.getJSONObject("error")
                             val message = error.optString("message", "Unknown error")
-                            val status = error.optString("status", "")
 
                             when (responseCode) {
                                 400 -> "Invalid request: $message"
