@@ -12,6 +12,10 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.Article
+import androidx.compose.material.icons.automirrored.filled.Chat
+import androidx.compose.material.icons.automirrored.filled.Message
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -56,6 +60,7 @@ fun HomeScreen(
     onNavigateToChat: () -> Unit,
     onNavigateToMindMap: () -> Unit,
     onNavigateToNotes: () -> Unit,
+    onNavigateToCode: () -> Unit,
     onNavigateToModelManager: () -> Unit,
     onNavigateToSettings: () -> Unit,
     onStatsSettingsUpdate: (StatsSettings) -> Unit,
@@ -201,6 +206,12 @@ fun HomeScreen(
                             NotesToolCard(scaleFactor, barberChopFont, onNavigateToNotes, true)
                         }
                     }
+
+                    item {
+                        AnimatedSection(visible = animationStarted, delayMillis = 500) {
+                            CodePlaygroundToolCard(scaleFactor, barberChopFont, onNavigateToCode, true)
+                        }
+                    }
                 }
             } else {
                 LazyColumn(
@@ -242,6 +253,12 @@ fun HomeScreen(
                     item {
                         AnimatedSection(visible = animationStarted, delayMillis = 400) {
                             NotesToolCard(scaleFactor, barberChopFont, onNavigateToNotes, false)
+                        }
+                    }
+
+                    item {
+                        AnimatedSection(visible = animationStarted, delayMillis = 500) {
+                            CodePlaygroundToolCard(scaleFactor, barberChopFont, onNavigateToCode, false)
                         }
                     }
                 }
@@ -539,7 +556,7 @@ fun StatsCard(
                         scaleFactor = scaleFactor
                     )
                     StatItem(
-                        icon = Icons.Default.Message,
+                        icon = Icons.AutoMirrored.Filled.Message,
                         value = statsSummary.totalMessages.toString(),
                         label = "msgs",
                         compact = true,
@@ -622,7 +639,7 @@ fun ChatToolCard(
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    Icons.Default.ArrowForward,
+                    Icons.AutoMirrored.Filled.ArrowForward,
                     contentDescription = "Open Chat",
                     modifier = Modifier
                         .size((24 * scaleFactor).dp)
@@ -655,7 +672,7 @@ fun ChatToolCard(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
-                        Icons.Default.Chat,
+                        Icons.AutoMirrored.Filled.Chat,
                         contentDescription = null,
                         modifier = Modifier.size((18 * scaleFactor).dp),
                         tint = Color(0xFF81C784)
@@ -883,7 +900,7 @@ fun NotesToolCard(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
-                        Icons.Default.Article,
+                        Icons.AutoMirrored.Filled.Article,
                         contentDescription = null,
                         modifier = Modifier.size((18 * scaleFactor).dp),
                         tint = Color(0xFFFFB74D)
@@ -906,6 +923,113 @@ fun NotesToolCard(
                         fontSize = (12 * scaleFactor).sp
                     ),
                     color = Color(0xFFFFE0B2)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun CodePlaygroundToolCard(
+    scaleFactor: Float,
+    barberChopFont: FontFamily,
+    onNavigateToCode: () -> Unit,
+    isLandscape: Boolean
+) {
+    Card(
+        onClick = onNavigateToCode,
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = Color(0xFF0277BD)
+        ),
+        shape = RoundedCornerShape((12 * scaleFactor).dp)
+    ) {
+        Box(
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(
+                text = "LOGIC",
+                style = MaterialTheme.typography.displayMedium.copy(
+                    fontFamily = barberChopFont,
+                    fontSize = if (isLandscape) (40 * scaleFactor).sp else (60 * scaleFactor).sp,
+                    lineHeight = if (isLandscape) (50 * scaleFactor).sp else (70 * scaleFactor).sp
+                ),
+                fontWeight = FontWeight.Black,
+                color = Color(0xFF039BE5),
+                modifier = Modifier.align(Alignment.Center)
+            )
+
+            Box(
+                modifier = Modifier
+                    .size(if (isLandscape) (70 * scaleFactor).dp else (90 * scaleFactor).dp)
+                    .offset(
+                        x = if (isLandscape) (20 * scaleFactor).dp else (25 * scaleFactor).dp,
+                        y = if (isLandscape) (-20 * scaleFactor).dp else (-25 * scaleFactor).dp
+                    )
+                    .align(Alignment.TopEnd)
+                    .background(
+                        color = Color(0xFF0288D1),
+                        shape = CircleShape
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Default.Code,
+                    contentDescription = "Open Code Playground",
+                    modifier = Modifier
+                        .size((24 * scaleFactor).dp)
+                        .offset(x = (-10 * scaleFactor).dp),
+                    tint = Color.White
+                )
+            }
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding((16 * scaleFactor).dp),
+                verticalArrangement = Arrangement.spacedBy((10 * scaleFactor).dp)
+            ) {
+                Text(
+                    text = "CODE PLAYGROUND",
+                    style = MaterialTheme.typography.titleLarge.copy(
+                        fontFamily = barberChopFont,
+                        fontSize = (16 * scaleFactor).sp,
+                        lineHeight = (20 * scaleFactor).sp
+                    ),
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
+
+                Spacer(modifier = Modifier.height((6 * scaleFactor).dp))
+
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy((6 * scaleFactor).dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.Terminal,
+                        contentDescription = null,
+                        modifier = Modifier.size((18 * scaleFactor).dp),
+                        tint = Color(0xFF4FC3F7)
+                    )
+                    Text(
+                        text = "OPEN EDITOR",
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontFamily = barberChopFont,
+                            fontSize = (14 * scaleFactor).sp,
+                            lineHeight = (18 * scaleFactor).sp
+                        ),
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                }
+
+                Text(
+                    text = "Write & execute Python scripts",
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        fontSize = (12 * scaleFactor).sp
+                    ),
+                    color = Color(0xFFB3E5FC)
                 )
             }
         }

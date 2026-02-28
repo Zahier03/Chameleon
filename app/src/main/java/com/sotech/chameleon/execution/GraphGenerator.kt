@@ -10,6 +10,188 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.math.*
 
+// Restored Data Classes
+data class GraphData(
+    val type: GraphType = GraphType.LINE,
+    val data: List<Point> = emptyList(),
+    val title: String = "",
+    val xLabel: String = "",
+    val yLabel: String = ""
+)
+
+data class Point(val x: Double, val y: Double)
+
+enum class GraphType { LINE, BAR, SCATTER, PIE }
+
+// Restored Math Calculator for legacy logic
+class MathCalculator {
+    private val constants = mapOf(
+        "pi" to PI,
+        "e" to E,
+        "π" to PI,
+        "phi" to (1 + sqrt(5.0)) / 2
+    )
+
+    private val functions = mapOf(
+        "sin" to { x: Double -> sin(x) },
+        "cos" to { x: Double -> cos(x) },
+        "tan" to { x: Double -> tan(x) },
+        "asin" to { x: Double -> asin(x) },
+        "acos" to { x: Double -> acos(x) },
+        "atan" to { x: Double -> atan(x) },
+        "sinh" to { x: Double -> sinh(x) },
+        "cosh" to { x: Double -> cosh(x) },
+        "tanh" to { x: Double -> tanh(x) },
+        "exp" to { x: Double -> exp(x) },
+        "ln" to { x: Double -> ln(x) },
+        "log" to { x: Double -> log10(x) },
+        "log10" to { x: Double -> log10(x) },
+        "log2" to { x: Double -> log2(x) },
+        "sqrt" to { x: Double -> sqrt(x) },
+        "abs" to { x: Double -> abs(x) },
+        "ceil" to { x: Double -> ceil(x) },
+        "floor" to { x: Double -> floor(x) },
+        "round" to { x: Double -> round(x) }
+    )
+
+    fun evaluate(expression: String): Double {
+        var expr = expression.lowercase().replace(" ", "").replace("**", "^")
+        constants.forEach { (name, value) ->
+            expr = expr.replace(name, value.toString())
+        }
+        return evaluateExpression(expr)
+    }
+
+    private fun evaluateExpression(expr: String): Double = evaluateAddSub(expr)
+
+    private fun evaluateAddSub(expr: String): Double {
+        var result = evaluateMulDiv(getNextToken(expr, 0).first)
+        var i = getNextToken(expr, 0).second
+        while (i < expr.length) {
+            when (expr[i]) {
+                '+' -> {
+                    val (token, nextI) = getNextToken(expr, i + 1)
+                    result += evaluateMulDiv(token)
+                    i = nextI
+                }
+                '-' -> {
+                    val (token, nextI) = getNextToken(expr, i + 1)
+                    result -= evaluateMulDiv(token)
+                    i = nextI
+                }
+                else -> break
+            }
+        }
+        return result
+    }
+
+    private fun evaluateMulDiv(expr: String): Double {
+        var result = evaluatePower(getNextFactor(expr, 0).first)
+        var i = getNextFactor(expr, 0).second
+        while (i < expr.length) {
+            when (expr[i]) {
+                '*' -> {
+                    val (token, nextI) = getNextFactor(expr, i + 1)
+                    result *= evaluatePower(token)
+                    i = nextI
+                }
+                '/' -> {
+                    val (token, nextI) = getNextFactor(expr, i + 1)
+                    result /= evaluatePower(token)
+                    i = nextI
+                }
+                '%' -> {
+                    val (token, nextI) = getNextFactor(expr, i + 1)
+                    result %= evaluatePower(token)
+                    i = nextI
+                }
+                else -> break
+            }
+        }
+        return result
+    }
+
+    private fun evaluatePower(expr: String): Double {
+        val parts = expr.split("^")
+        if (parts.size == 1) return evaluateFactor(parts[0])
+        var result = evaluateFactor(parts.last())
+        for (i in parts.size - 2 downTo 0) {
+            result = evaluateFactor(parts[i]).pow(result)
+        }
+        return result
+    }
+
+    private fun evaluateFactor(expr: String): Double {
+        if (expr.isEmpty()) throw IllegalArgumentException("Empty expression")
+
+        if (expr[0] == '(') {
+            val closingIndex = findMatchingParenthesis(expr, 0)
+            return evaluateExpression(expr.substring(1, closingIndex))
+        }
+
+        if (expr[0] == '-') return -evaluateFactor(expr.substring(1))
+        if (expr[0] == '+') return evaluateFactor(expr.substring(1))
+
+        for ((name, func) in functions) {
+            if (expr.startsWith(name)) {
+                val argStart = expr.indexOf('(', name.length)
+                if (argStart != -1) {
+                    val argEnd = findMatchingParenthesis(expr, argStart)
+                    val arg = expr.substring(argStart + 1, argEnd)
+                    return func(evaluateExpression(arg))
+                }
+            }
+        }
+
+        return expr.toDoubleOrNull() ?: throw IllegalArgumentException("Invalid number: $expr")
+    }
+
+    private fun getNextToken(expr: String, start: Int): Pair<String, Int> {
+        var i = start
+        val token = StringBuilder()
+        while (i < expr.length && expr[i] !in "+-") {
+            if (expr[i] == '(') {
+                val end = findMatchingParenthesis(expr, i)
+                token.append(expr.substring(i, end + 1))
+                i = end + 1
+            } else {
+                token.append(expr[i])
+                i++
+            }
+        }
+        return Pair(token.toString(), i)
+    }
+
+    private fun getNextFactor(expr: String, start: Int): Pair<String, Int> {
+        var i = start
+        val token = StringBuilder()
+        while (i < expr.length && expr[i] !in "*/%") {
+            if (expr[i] == '(') {
+                val end = findMatchingParenthesis(expr, i)
+                token.append(expr.substring(i, end + 1))
+                i = end + 1
+            } else {
+                token.append(expr[i])
+                i++
+            }
+        }
+        return Pair(token.toString(), i)
+    }
+
+    private fun findMatchingParenthesis(expr: String, start: Int): Int {
+        var count = 1
+        var i = start + 1
+        while (i < expr.length && count > 0) {
+            when (expr[i]) {
+                '(' -> count++
+                ')' -> count--
+            }
+            i++
+        }
+        return i - 1
+    }
+}
+
 @Singleton
 class GraphGenerator @Inject constructor() {
 

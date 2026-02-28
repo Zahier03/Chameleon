@@ -26,6 +26,7 @@ import com.sotech.chameleon.ui.screens.DeckScreen
 import com.sotech.chameleon.ui.screens.MindMapScreen
 import com.sotech.chameleon.ui.screens.ModelSelectorScreen
 import com.sotech.chameleon.ui.screens.NotesScreen
+import com.sotech.chameleon.ui.screens.CodePlaygroundScreen
 import com.sotech.chameleon.ui.screens.SettingsScreen
 import com.sotech.chameleon.ui.dialogs.ThemeSettingsDialog
 
@@ -197,6 +198,9 @@ fun ChameleonApp(
                         onNavigateToNotes = {
                             navController.navigate("notes")
                         },
+                        onNavigateToCode = {
+                            navController.navigate("code")
+                        },
                         onNavigateToModelManager = {
                             navController.navigate("models")
                         },
@@ -245,6 +249,15 @@ fun ChameleonApp(
                         },
                         onOpenModelSelector = {
                             navController.navigate("models?fromChat=true")
+                        }
+                    )
+                }
+
+                composable("code") {
+                    CodePlaygroundScreen(
+                        viewModel = viewModel,
+                        onBack = {
+                            navController.popBackStack()
                         }
                     )
                 }
@@ -453,6 +466,9 @@ fun ChameleonApp(
                         onNavigateToNotes = {
                             navController.navigate("notes")
                         },
+                        onNavigateToCode = {
+                            navController.navigate("code")
+                        },
                         onNavigateToModelManager = {
                             navController.navigate("models")
                         },
@@ -501,6 +517,15 @@ fun ChameleonApp(
                         },
                         onOpenModelSelector = {
                             navController.navigate("models?fromChat=true")
+                        }
+                    )
+                }
+
+                composable("code") {
+                    CodePlaygroundScreen(
+                        viewModel = viewModel,
+                        onBack = {
+                            navController.popBackStack()
                         }
                     )
                 }

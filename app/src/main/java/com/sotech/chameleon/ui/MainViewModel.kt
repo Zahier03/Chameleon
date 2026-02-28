@@ -1,10 +1,14 @@
 package com.sotech.chameleon.ui
 
+import android.content.ContentValues
 import android.content.Context
 import android.graphics.Bitmap
 import android.net.Uri
+import android.os.Build
+import android.provider.MediaStore
 import android.provider.OpenableColumns
 import android.util.Log
+import android.widget.Toast
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sotech.chameleon.data.*
@@ -15,10 +19,12 @@ import com.sotech.chameleon.execution.CodeParser
 import com.sotech.chameleon.execution.GraphGenerator
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flatMapLatest
@@ -34,9 +40,35 @@ import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStream
 import java.io.OutputStream
+import java.util.UUID
 import javax.inject.Inject
-import kotlin.collections.mapIndexed
 
+data class PlaygroundOutput(
+    val text: String,
+    val isError: Boolean = false,
+    val imageBitmap: Bitmap? = null
+)
+
+data class TerminalSession(
+    val id: String = UUID.randomUUID().toString(),
+    val name: String,
+    val output: List<PlaygroundOutput> = emptyList()
+)
+
+data class CodeCell(
+    val id: String = UUID.randomUUID().toString(),
+    val code: String = "",
+    val output: List<PlaygroundOutput> = emptyList(),
+    val isRunning: Boolean = false
+)
+
+data class FileNode(
+    val file: File,
+    val depth: Int,
+    val isExpanded: Boolean
+)
+
+@OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class MainViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
@@ -49,6 +81,48 @@ class MainViewModel @Inject constructor(
 ) : ViewModel() {
     private val TAG = "MainViewModel"
 
+    // --- Playground States ---
+    private val playgroundDir by lazy { File(context.filesDir, "playground").apply { mkdirs() } }
+
+    private val _currentPlaygroundDir = MutableStateFlow<File>(playgroundDir)
+    val currentPlaygroundDir: StateFlow<File> = _currentPlaygroundDir.asStateFlow()
+
+    val isAtPlaygroundRoot: StateFlow<Boolean> = _currentPlaygroundDir.map {
+        it.absolutePath == playgroundDir.absolutePath
+    }.stateIn(viewModelScope, SharingStarted.Lazily, true)
+
+    private val _expandedFolders = MutableStateFlow<Set<String>>(emptySet())
+
+    private val _fileTree = MutableStateFlow<List<FileNode>>(emptyList())
+    val fileTree: StateFlow<List<FileNode>> = _fileTree.asStateFlow()
+
+    private val _currentFile = MutableStateFlow<File?>(null)
+    val currentFile: StateFlow<File?> = _currentFile.asStateFlow()
+
+    private val _codeContent = MutableStateFlow("")
+    val codeContent: StateFlow<String> = _codeContent.asStateFlow()
+
+    private val _isPlaygroundRunning = MutableStateFlow(false)
+    val isPlaygroundRunning: StateFlow<Boolean> = _isPlaygroundRunning.asStateFlow()
+
+    // Colab-style States
+    private val _isColabMode = MutableStateFlow(false)
+    val isColabMode: StateFlow<Boolean> = _isColabMode.asStateFlow()
+
+    private val _notebookCells = MutableStateFlow<List<CodeCell>>(emptyList())
+    val notebookCells: StateFlow<List<CodeCell>> = _notebookCells.asStateFlow()
+
+    private val _installedPackages = MutableStateFlow<List<String>?>(null)
+    val installedPackages: StateFlow<List<String>?> = _installedPackages.asStateFlow()
+
+    // Multi-session Terminal State
+    private val _terminalSessions = MutableStateFlow<List<TerminalSession>>(listOf(TerminalSession(name = "Bash 1")))
+    val terminalSessions: StateFlow<List<TerminalSession>> = _terminalSessions.asStateFlow()
+
+    private val _activeSessionId = MutableStateFlow<String>(_terminalSessions.value.first().id)
+    val activeSessionId: StateFlow<String> = _activeSessionId.asStateFlow()
+
+    // --- Original States ---
     val importedModels = repository.importedModels.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
@@ -186,6 +260,294 @@ class MainViewModel @Inject constructor(
         }
     }
 
+    // --- File System / Tree Playground Functions ---
+
+    fun refreshFileTree() {
+        val result = mutableListOf<FileNode>()
+        buildTree(playgroundDir, 0, _expandedFolders.value, result)
+        _fileTree.value = result
+    }
+
+    private fun buildTree(dir: File, depth: Int, expanded: Set<String>, result: MutableList<FileNode>) {
+        val files = dir.listFiles()?.sortedWith(compareBy({ !it.isDirectory }, { it.name.lowercase() })) ?: return
+        for (file in files) {
+            val isExp = expanded.contains(file.absolutePath)
+            result.add(FileNode(file, depth, isExp))
+            if (file.isDirectory && isExp) {
+                buildTree(file, depth + 1, expanded, result)
+            }
+        }
+    }
+
+    fun toggleFolder(file: File) {
+        val current = _expandedFolders.value.toMutableSet()
+        if (current.contains(file.absolutePath)) {
+            current.remove(file.absolutePath)
+        } else {
+            current.add(file.absolutePath)
+        }
+        _expandedFolders.value = current
+        _currentPlaygroundDir.value = file
+        refreshFileTree()
+    }
+
+    fun resetTargetFolder() {
+        _currentPlaygroundDir.value = playgroundDir
+    }
+
+    fun deletePlaygroundItem(file: File) {
+        if (file.isDirectory) {
+            file.deleteRecursively()
+        } else {
+            file.delete()
+        }
+        if (_currentFile.value?.absolutePath == file.absolutePath) {
+            _currentFile.value = null
+            _codeContent.value = ""
+        }
+        if (_currentPlaygroundDir.value.absolutePath.startsWith(file.absolutePath)) {
+            _currentPlaygroundDir.value = playgroundDir
+        }
+        refreshFileTree()
+    }
+
+    fun createPlaygroundFolder(folderName: String) {
+        val folder = File(_currentPlaygroundDir.value, folderName)
+        if (!folder.exists()) {
+            folder.mkdirs()
+            val currentExp = _expandedFolders.value.toMutableSet()
+            currentExp.add(_currentPlaygroundDir.value.absolutePath)
+            _expandedFolders.value = currentExp
+            refreshFileTree()
+        }
+    }
+
+    fun createPlaygroundFile(fileName: String) {
+        var name = fileName
+        if (!name.endsWith(".py") && !name.endsWith(".txt")) name += ".py"
+        val file = File(_currentPlaygroundDir.value, name)
+        if (!file.exists()) {
+            file.createNewFile()
+            if (name.endsWith(".py")) {
+                file.writeText("# %%\nimport matplotlib.pyplot as plt\nimport numpy as np\n\nprint(\"Hello Chameleon Notebook!\")\n")
+            }
+            val currentExp = _expandedFolders.value.toMutableSet()
+            currentExp.add(_currentPlaygroundDir.value.absolutePath)
+            _expandedFolders.value = currentExp
+
+            refreshFileTree()
+            selectPlaygroundFile(file)
+        }
+    }
+
+    fun selectPlaygroundFile(file: File) {
+        savePlaygroundFile()
+        _currentFile.value = file
+        val content = file.readText()
+        _codeContent.value = content
+
+        if (content.contains("# %%")) {
+            _isColabMode.value = true
+            parseCellsFromContent(content)
+        } else {
+            _isColabMode.value = false
+        }
+    }
+
+    fun updateCodeContent(content: String) {
+        _codeContent.value = content
+    }
+
+    fun savePlaygroundFile() {
+        if (_currentFile.value == null) return
+        val contentToSave = if (_isColabMode.value) {
+            _notebookCells.value.joinToString("\n\n# %%\n") { it.code }
+        } else {
+            _codeContent.value
+        }
+        _currentFile.value?.writeText(contentToSave)
+    }
+
+    fun saveImageToGallery(bitmap: Bitmap) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val filename = "Chameleon_Plot_${System.currentTimeMillis()}.png"
+                val values = ContentValues().apply {
+                    put(MediaStore.Images.Media.DISPLAY_NAME, filename)
+                    put(MediaStore.Images.Media.MIME_TYPE, "image/png")
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/Chameleon")
+                        put(MediaStore.Images.Media.IS_PENDING, 1)
+                    }
+                }
+
+                val uri = context.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+                uri?.let {
+                    context.contentResolver.openOutputStream(it)?.use { out ->
+                        bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+                    }
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        values.clear()
+                        values.put(MediaStore.Images.Media.IS_PENDING, 0)
+                        context.contentResolver.update(it, values, null, null)
+                    }
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(context, "Image saved to Gallery", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error saving image", e)
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "Failed to save image", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
+    // --- Colab Mode Functions ---
+    fun toggleColabMode() {
+        if (_isColabMode.value) {
+            _codeContent.value = _notebookCells.value.joinToString("\n\n# %%\n") { it.code }
+            _isColabMode.value = false
+        } else {
+            parseCellsFromContent(_codeContent.value)
+            _isColabMode.value = true
+        }
+    }
+
+    private fun parseCellsFromContent(content: String) {
+        val blocks = content.split("# %%").map { it.trim() }.filter { it.isNotEmpty() }
+        _notebookCells.value = if (blocks.isEmpty()) {
+            listOf(CodeCell(code = ""))
+        } else {
+            blocks.map { CodeCell(code = it) }
+        }
+    }
+
+    fun updateCellCode(id: String, newCode: String) {
+        _notebookCells.value = _notebookCells.value.map { if (it.id == id) it.copy(code = newCode) else it }
+    }
+
+    fun addCellBelow(id: String) {
+        val currentCells = _notebookCells.value.toMutableList()
+        val index = currentCells.indexOfFirst { it.id == id }
+        if (index != -1) {
+            currentCells.add(index + 1, CodeCell())
+            _notebookCells.value = currentCells
+        }
+    }
+
+    fun removeCell(id: String) {
+        if (_notebookCells.value.size > 1) {
+            _notebookCells.value = _notebookCells.value.filter { it.id != id }
+        }
+    }
+
+    fun runCell(id: String) {
+        val cell = _notebookCells.value.find { it.id == id } ?: return
+        if (cell.isRunning) return
+
+        _notebookCells.value = _notebookCells.value.map {
+            if (it.id == id) it.copy(isRunning = true, output = emptyList()) else it
+        }
+
+        viewModelScope.launch {
+            val result = codeExecutor.execute(cell.code, "python", context, _activeSessionId.value)
+            val newOutput = PlaygroundOutput(
+                text = if (result.success) result.output else result.error,
+                isError = !result.success,
+                imageBitmap = result.imageBitmap
+            )
+
+            _notebookCells.value = _notebookCells.value.map {
+                if (it.id == id) it.copy(isRunning = false, output = listOf(newOutput)) else it
+            }
+        }
+    }
+
+    fun restartSessionAndClearOutputs() {
+        codeExecutor.resetSession(_activeSessionId.value)
+        if (_isColabMode.value) {
+            _notebookCells.value = _notebookCells.value.map { it.copy(output = emptyList()) }
+        } else {
+            clearTerminal(_activeSessionId.value)
+        }
+    }
+
+    fun fetchInstalledPackages() {
+        viewModelScope.launch {
+            _installedPackages.value = listOf("Loading packages...")
+            val packages = codeExecutor.getInstalledPackages(context)
+            _installedPackages.value = packages
+        }
+    }
+
+    fun dismissInstalledPackages() {
+        _installedPackages.value = null
+    }
+
+    // --- Terminal Session Management ---
+    fun createTerminalSession() {
+        val count = _terminalSessions.value.size + 1
+        val newSession = TerminalSession(name = "Bash $count")
+        _terminalSessions.value = _terminalSessions.value + newSession
+        _activeSessionId.value = newSession.id
+    }
+
+    fun switchTerminalSession(id: String) {
+        _activeSessionId.value = id
+    }
+
+    fun closeTerminalSession(id: String) {
+        val currentList = _terminalSessions.value
+        if (currentList.size > 1) {
+            val newList = currentList.filter { it.id != id }
+            _terminalSessions.value = newList
+            if (_activeSessionId.value == id) {
+                _activeSessionId.value = newList.last().id
+            }
+        }
+    }
+
+    fun clearTerminal(sessionId: String) {
+        _terminalSessions.value = _terminalSessions.value.map { session ->
+            if (session.id == sessionId) session.copy(output = emptyList()) else session
+        }
+    }
+
+    private fun appendTerminalOutput(sessionId: String, output: PlaygroundOutput) {
+        _terminalSessions.value = _terminalSessions.value.map { session ->
+            if (session.id == sessionId) session.copy(output = session.output + output) else session
+        }
+    }
+
+    fun runPlaygroundCode() {
+        if (_isPlaygroundRunning.value) return
+
+        savePlaygroundFile()
+
+        val codeToRun = _codeContent.value
+        val sessionId = _activeSessionId.value
+        val fileName = _currentFile.value?.name ?: "script.py"
+
+        appendTerminalOutput(sessionId, PlaygroundOutput("> Running $fileName...", isError = false))
+
+        _isPlaygroundRunning.value = true
+
+        viewModelScope.launch {
+            val result = codeExecutor.execute(codeToRun, "python", context, sessionId)
+
+            val newOutput = PlaygroundOutput(
+                text = if(result.success) result.output else result.error,
+                isError = !result.success,
+                imageBitmap = result.imageBitmap
+            )
+            appendTerminalOutput(sessionId, newOutput)
+            _isPlaygroundRunning.value = false
+        }
+    }
+
+    // --- Original Functions ---
     fun createNewConversation(title: String = "New Chat") {
         viewModelScope.launch {
             val newConvo = repository.createConversation(
@@ -428,8 +790,6 @@ class MainViewModel @Inject constructor(
                 var hasCompleted = false
                 var hasError = false
 
-                Log.d(TAG, "Sending message: $message with ${images.size} images")
-
                 if (currentModel.isApiModel) {
                     geminiHelper.generateResponse(
                         prompt = enhancedMessage,
@@ -580,7 +940,6 @@ class MainViewModel @Inject constructor(
 
         currentMessageJob = viewModelScope.launch {
             try {
-                // FIXED PROMPT: Enforcing quotation marks globally for Mermaid robustness
                 val systemPrompt = """
                     You are an expert at extracting information and creating mind maps.
                     Analyze the following input and generate a hierarchical mind map structure using Mermaid.js format (graph TD).
@@ -589,15 +948,6 @@ class MainViewModel @Inject constructor(
                     
                     CRITICAL SYNTAX RULE - YOU MUST FOLLOW THIS:
                     You MUST wrap EVERY node's text label in double quotes to prevent syntax errors with mathematical symbols, slashes, hyphens, and special characters.
-                    Example of CORRECT format: 
-                    A["Introduction"] --> B{"Core Concept"}
-                    B --> C["Formula: x/y + z = 1"]
-                    
-                    Example of WRONG format (DO NOT DO THIS): 
-                    A[Introduction] --> B{Core Concept}
-                    B --> C[Formula: x/y + z = 1]
-                    
-                    Never output text inside brackets without wrapping them in double quotes `["..."]` or `{"..."}`.
                     
                     User Input: $prompt
                 """.trimIndent()
@@ -608,7 +958,6 @@ class MainViewModel @Inject constructor(
                     systemPrompt
                 }
 
-                // Read and Encode PDFs to Base64 for Gemini API
                 val pdfBase64s = mutableListOf<String>()
                 if (pdfUris.isNotEmpty() && currentModel.isApiModel) {
                     for (uri in pdfUris) {
@@ -629,8 +978,7 @@ class MainViewModel @Inject constructor(
                         model = currentModel,
                         images = images,
                         pdfBase64s = pdfBase64s,
-                        onPartialResult = { partial ->
-                        },
+                        onPartialResult = { partial -> },
                         onComplete = { stats ->
                             _isGeneratingMindMap.value = false
                             _mindMapContent.value = geminiHelper.currentResponse.value.replace("```mermaid", "").replace("```", "").trim()
@@ -740,7 +1088,7 @@ class MainViewModel @Inject constructor(
 
 User Request: $message
 
-IMPORTANT: If the user asks to plot, graph, or visualize a function, you MUST provide executable Python code using matplotlib. Do not just describe what the graph would look like. Provide the actual code that will be executed to generate the graph."""
+IMPORTANT: If the user asks to plot, graph, or visualize a function, you MUST provide executable Python code using matplotlib."""
         } else {
             message
         }

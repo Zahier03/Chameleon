@@ -212,6 +212,9 @@ fun NotesScreen(
 
     if (editingNote != null || isCreatingNew) {
         Scaffold(
+            modifier = Modifier
+                .fillMaxSize()
+                .imePadding(), // Fixes Keyboard Overlap
             topBar = {
                 TopAppBar(
                     title = {
@@ -438,7 +441,10 @@ fun NotesScreen(
                                     innerTextField()
                                 }
                             },
-                            modifier = Modifier.fillMaxWidth().wrapContentHeight()
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .wrapContentHeight()
+                                .padding(bottom = 300.dp) // Fixes the scroll limit: gives free scrolling space at the end
                         )
 
                         if (isMarkerMode) {
@@ -606,6 +612,9 @@ fun NotesScreen(
         }
     } else {
         Scaffold(
+            modifier = Modifier
+                .fillMaxSize()
+                .imePadding(), // Ensure lists also behave well with keyboard if it somehow pops up
             topBar = {
                 TopAppBar(
                     title = { Text("My Notes", fontWeight = FontWeight.Bold) },
