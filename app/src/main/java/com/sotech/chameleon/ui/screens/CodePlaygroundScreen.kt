@@ -568,7 +568,7 @@ fun CodePlaygroundScreen(
             }
 
             // Installed Packages Overlay
-            if (installedPackages != null) {
+            installedPackages?.let { packages ->
                 Dialog(
                     onDismissRequest = { viewModel.dismissInstalledPackages() },
                     properties = DialogProperties(usePlatformDefaultWidth = false)
@@ -605,7 +605,7 @@ fun CodePlaygroundScreen(
                                 contentPadding = PaddingValues(16.dp),
                                 verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                items(installedPackages!!) { pkg ->
+                                items(packages) { pkg ->
                                     Text(
                                         text = "• $pkg",
                                         fontFamily = FontFamily.Monospace,
@@ -620,7 +620,7 @@ fun CodePlaygroundScreen(
             }
 
             // Image Popup Overlay with Save Button
-            if (popupImage != null) {
+            popupImage?.let { img ->
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -655,7 +655,7 @@ fun CodePlaygroundScreen(
                                 Text("Generated Plot", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.padding(start = 8.dp))
 
                                 Row {
-                                    IconButton(onClick = { viewModel.saveImageToGallery(popupImage!!) }, modifier = Modifier.size(28.dp)) {
+                                    IconButton(onClick = { viewModel.saveImageToGallery(img) }, modifier = Modifier.size(28.dp)) {
                                         Icon(Icons.Default.Download, contentDescription = "Download", tint = MaterialTheme.colorScheme.onPrimaryContainer)
                                     }
                                     Spacer(Modifier.width(8.dp))
@@ -669,7 +669,7 @@ fun CodePlaygroundScreen(
                                 }
                             }
                             Image(
-                                bitmap = popupImage!!.asImageBitmap(),
+                                bitmap = img.asImageBitmap(),
                                 contentDescription = "Matplotlib Plot",
                                 modifier = Modifier
                                     .fillMaxWidth(0.9f)
@@ -684,16 +684,16 @@ fun CodePlaygroundScreen(
         }
     }
 
-    if (fileToDelete != null) {
-        val isFolder = fileToDelete!!.isDirectory
+    fileToDelete?.let { file ->
+        val isFolder = file.isDirectory
         AlertDialog(
             onDismissRequest = { fileToDelete = null },
             title = { Text(if (isFolder) "Delete Folder" else "Delete File") },
-            text = { Text("Are you sure you want to delete '${fileToDelete!!.name}'? This action cannot be undone.") },
+            text = { Text("Are you sure you want to delete '${file.name}'? This action cannot be undone.") },
             confirmButton = {
                 Button(
                     onClick = {
-                        viewModel.deletePlaygroundItem(fileToDelete!!)
+                        viewModel.deletePlaygroundItem(file)
                         fileToDelete = null
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
