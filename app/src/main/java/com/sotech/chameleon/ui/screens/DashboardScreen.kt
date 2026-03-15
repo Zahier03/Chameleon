@@ -1,152 +1,50 @@
 package com.sotech.chameleon.ui.screens
 
-import android.content.res.Configuration
-import androidx.compose.animation.*
-import androidx.compose.animation.core.*
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Chat
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.text.font.Font
-import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.sotech.chameleon.R
+import com.sotech.chameleon.data.CalendarEvent
+import com.sotech.chameleon.data.TimetableEntry
 import com.sotech.chameleon.ui.MainViewModel
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
 
-data class DashboardEventDisplay(
-    val title: String,
-    val description: String,
-    val timeInfo: String,
-    val color: Color,
-    val isCalendar: Boolean
-)
-
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DashboardScreen(
     modifier: Modifier = Modifier,
     viewModel: MainViewModel = hiltViewModel(),
     onNavigateToChat: () -> Unit,
+    onNavigateToMindMap: () -> Unit,
+    onNavigateToNotes: () -> Unit,
+    onNavigateToCode: () -> Unit,
+    onNavigateToModelManager: () -> Unit,
     onNavigateToDeck: () -> Unit
 ) {
     val calendarEvents by viewModel.calendarEvents.collectAsState(initial = emptyList())
     val timetableEntries by viewModel.timetableEntries.collectAsState(initial = emptyList())
-    var animationStarted by remember { mutableStateOf(false) }
 
-    val configuration = LocalConfiguration.current
-    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
-    val screenWidthDp = configuration.screenWidthDp.dp
-    val screenHeightDp = configuration.screenHeightDp.dp
-    val referenceScreenWidth = 411.dp
-
-    val textScaleFactor = remember(screenWidthDp, screenHeightDp, isLandscape) {
-        if (isLandscape) {
-            (screenHeightDp.value / 411f).coerceIn(0.5f, 1f)
-        } else {
-            if (screenWidthDp < referenceScreenWidth) screenWidthDp / referenceScreenWidth else 1f
-        }
-    }
-
-    val barberChopFont = remember {
-        try {
-            FontFamily(Font(R.font.barberchop, FontWeight.Bold))
-        } catch (e: Exception) {
-            FontFamily.Default
-        }
-    }
-
-    val upcomingEvents by remember {
-        derivedStateOf {
-            val now = System.currentTimeMillis()
-            val calendar = Calendar.getInstance()
-            val dayOfWeek = calendar.get(Calendar.DAY_OF_WEEK)
-            val currentTime = SimpleDateFormat("HH:mm", Locale.getDefault()).format(calendar.time)
-
-            val futureCalendarEvents = calendarEvents
-                .map { event ->
-                    val eventCalendar = Calendar.getInstance().apply {
-                        timeInMillis = event.dateTime
-                        set(Calendar.HOUR_OF_DAY, event.hour)
-                        set(Calendar.MINUTE, event.minute)
-                        set(Calendar.SECOND, 0)
-                        set(Calendar.MILLISECOND, 0)
-                    }
-                    event to eventCalendar.timeInMillis
-                }
-                .filter { (_, eventTime) -> eventTime > now }
-                .sortedBy { (_, eventTime) -> eventTime }
-                .take(5)
-                .map { (event, _) ->
-                    DashboardEventDisplay(
-                        event.title,
-                        event.description,
-                        formatDateTime(event.dateTime, event.hour, event.minute),
-                        Color(event.color),
-                        true
-                    )
-                }
-
-            val todayTimetable = timetableEntries
-                .filter { it.dayOfWeek == dayOfWeek }
-                .mapNotNull { entry ->
-                    try {
-                        val timeParts = entry.startTime.split(":")
-                        val entryCalendar = Calendar.getInstance().apply {
-                            set(Calendar.HOUR_OF_DAY, timeParts[0].toInt())
-                            set(Calendar.MINUTE, timeParts[1].toInt())
-                            set(Calendar.SECOND, 0)
-                            set(Calendar.MILLISECOND, 0)
-                        }
-                        if (entryCalendar.timeInMillis > now) {
-                            entry to entryCalendar.timeInMillis
-                        } else null
-                    } catch (e: Exception) {
-                        null
-                    }
-                }
-                .sortedBy { (_, time) -> time }
-                .take(3)
-                .map { (entry, _) ->
-                    DashboardEventDisplay(
-                        entry.title,
-                        entry.description,
-                        "${entry.startTime} - ${entry.endTime}",
-                        Color(entry.color),
-                        false
-                    )
-                }
-
-            (futureCalendarEvents + todayTimetable)
-                .sortedBy { event ->
-                    if (event.isCalendar) 0 else 1
-                }
-        }
-    }
-
-    LaunchedEffect(Unit) {
-        delay(100)
-        animationStarted = true
-    }
+    var showCalendarDialog by remember { mutableStateOf(false) }
+    var showTimetableDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         modifier = modifier,
@@ -156,581 +54,362 @@ fun DashboardScreen(
             TopAppBar(
                 title = {
                     Text(
-                        text = "DASHBOARD",
-                        style = MaterialTheme.typography.displaySmall.copy(
-                            fontFamily = barberChopFont,
-                            fontSize = (40 * textScaleFactor).sp,
-                            lineHeight = (50 * textScaleFactor).sp
-                        ),
-                        fontWeight = FontWeight.Black,
-                        letterSpacing = (3 * textScaleFactor).sp,
-                        color = MaterialTheme.colorScheme.onSurface
+                        text = "Home",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
                     )
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
+                    containerColor = MaterialTheme.colorScheme.background
                 )
             )
         }
     ) { paddingValues ->
-        if (isLandscape) {
-            Row(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(paddingValues)
-                    .padding(
-                        start = (24 * textScaleFactor).dp,
-                        end = (24 * textScaleFactor).dp,
-                        top = (16 * textScaleFactor).dp,
-                        bottom = (80 * textScaleFactor).dp
-                    ),
-                horizontalArrangement = Arrangement.spacedBy((24 * textScaleFactor).dp)
-            ) {
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight(),
-                    verticalArrangement = Arrangement.spacedBy((12 * textScaleFactor).dp)
-                ) {
-                    Card(
-                        onClick = onNavigateToChat,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f),
-                        colors = CardDefaults.cardColors(
-                            containerColor = Color(0xFF2E7D32)
-                        ),
-                        shape = RoundedCornerShape((16 * textScaleFactor).dp)
-                    ) {
-                        Box(
-                            modifier = Modifier.fillMaxSize()
-                        ) {
-                            Text(
-                                text = "AI",
-                                style = MaterialTheme.typography.displayLarge.copy(
-                                    fontFamily = barberChopFont,
-                                    fontSize = (60 * textScaleFactor).sp
-                                ),
-                                fontWeight = FontWeight.Black,
-                                color = Color(0xFF66BB6A).copy(alpha = 0.3f),
-                                modifier = Modifier.align(Alignment.Center)
-                            )
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(24.dp)
+        ) {
 
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding((16 * textScaleFactor).dp),
-                                verticalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Icon(
-                                    Icons.Default.Chat,
-                                    contentDescription = null,
-                                    modifier = Modifier.size((32 * textScaleFactor).dp),
-                                    tint = Color.White
-                                )
+            // SECTION: TOOLS
+            item {
+                Column {
+                    SectionHeader(title = "Tools")
+                    Spacer(modifier = Modifier.height(8.dp))
 
-                                Column(
-                                    verticalArrangement = Arrangement.spacedBy((8 * textScaleFactor).dp)
-                                ) {
-                                    Text(
-                                        text = "AI CHAT",
-                                        style = MaterialTheme.typography.titleLarge.copy(
-                                            fontFamily = barberChopFont,
-                                            fontSize = (20 * textScaleFactor).sp
-                                        ),
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color.White
-                                    )
-                                    Text(
-                                        text = "Start conversation",
-                                        style = MaterialTheme.typography.bodyMedium.copy(
-                                            fontSize = (12 * textScaleFactor).sp
-                                        ),
-                                        color = Color(0xFFA5D6A7)
-                                    )
-                                }
-                            }
-                        }
+                    GithubListGroup {
+                        GithubListItem(
+                            title = "AI Chat",
+                            icon = Icons.AutoMirrored.Filled.Chat,
+                            iconBgColor = Color(0xFF2EA043), // GitHub Green
+                            onClick = onNavigateToChat
+                        )
+                        HorizontalDivider(modifier = Modifier.padding(start = 56.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                        GithubListItem(
+                            title = "Ideas & Mind Map",
+                            icon = Icons.Default.AccountTree,
+                            iconBgColor = Color(0xFF8957E5), // GitHub Purple
+                            onClick = onNavigateToMindMap
+                        )
+                        HorizontalDivider(modifier = Modifier.padding(start = 56.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                        GithubListItem(
+                            title = "Notes & Editor",
+                            icon = Icons.Default.EditNote,
+                            iconBgColor = Color(0xFFD29922), // GitHub Yellow
+                            onClick = onNavigateToNotes
+                        )
+                        HorizontalDivider(modifier = Modifier.padding(start = 56.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                        GithubListItem(
+                            title = "Code Playground",
+                            icon = Icons.Default.Code,
+                            iconBgColor = Color(0xFF2F81F7), // GitHub Blue
+                            onClick = onNavigateToCode
+                        )
+                        HorizontalDivider(modifier = Modifier.padding(start = 56.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                        GithubListItem(
+                            title = "Manage Models",
+                            icon = Icons.Default.Storage,
+                            iconBgColor = Color(0xFF6E7681), // GitHub Gray
+                            onClick = onNavigateToModelManager
+                        )
                     }
-
-                    Card(
-                        onClick = onNavigateToDeck,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f),
-                        colors = CardDefaults.cardColors(
-                            containerColor = Color(0xFF1976D2)
-                        ),
-                        shape = RoundedCornerShape((16 * textScaleFactor).dp)
-                    ) {
-                        Box(
-                            modifier = Modifier.fillMaxSize()
-                        ) {
-                            Text(
-                                text = "TIME",
-                                style = MaterialTheme.typography.displayLarge.copy(
-                                    fontFamily = barberChopFont,
-                                    fontSize = (50 * textScaleFactor).sp
-                                ),
-                                fontWeight = FontWeight.Black,
-                                color = Color(0xFF64B5F6).copy(alpha = 0.3f),
-                                modifier = Modifier.align(Alignment.Center)
-                            )
-
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding((16 * textScaleFactor).dp),
-                                verticalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Icon(
-                                    Icons.Default.Schedule,
-                                    contentDescription = null,
-                                    modifier = Modifier.size((32 * textScaleFactor).dp),
-                                    tint = Color.White
-                                )
-
-                                Column(
-                                    verticalArrangement = Arrangement.spacedBy((8 * textScaleFactor).dp)
-                                ) {
-                                    Text(
-                                        text = "DECK",
-                                        style = MaterialTheme.typography.titleLarge.copy(
-                                            fontFamily = barberChopFont,
-                                            fontSize = (20 * textScaleFactor).sp
-                                        ),
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color.White
-                                    )
-                                    Text(
-                                        text = "View fullscreen",
-                                        style = MaterialTheme.typography.bodyMedium.copy(
-                                            fontSize = (12 * textScaleFactor).sp
-                                        ),
-                                        color = Color(0xFF90CAF9)
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                ) {
-                    EventCarousel(
-                        events = upcomingEvents,
-                        scaleFactor = textScaleFactor,
-                        barberChopFont = barberChopFont
-                    )
                 }
             }
-        } else {
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(paddingValues),
-                contentPadding = PaddingValues(
-                    start = (24 * textScaleFactor).dp,
-                    end = (24 * textScaleFactor).dp,
-                    top = (16 * textScaleFactor).dp,
-                    bottom = (80 * textScaleFactor).dp
-                ),
-                verticalArrangement = Arrangement.spacedBy((24 * textScaleFactor).dp)
-            ) {
-                item {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy((12 * textScaleFactor).dp)
-                    ) {
-                        Card(
-                            onClick = onNavigateToChat,
-                            modifier = Modifier.weight(1f),
-                            colors = CardDefaults.cardColors(
-                                containerColor = Color(0xFF2E7D32)
-                            ),
-                            shape = RoundedCornerShape((16 * textScaleFactor).dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height((200 * textScaleFactor).dp)
-                            ) {
-                                Text(
-                                    text = "AI",
-                                    style = MaterialTheme.typography.displayLarge.copy(
-                                        fontFamily = barberChopFont,
-                                        fontSize = (60 * textScaleFactor).sp
-                                    ),
-                                    fontWeight = FontWeight.Black,
-                                    color = Color(0xFF66BB6A).copy(alpha = 0.3f),
-                                    modifier = Modifier.align(Alignment.Center)
-                                )
 
-                                Column(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .padding((16 * textScaleFactor).dp),
-                                    verticalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Icon(
-                                        Icons.Default.Chat,
-                                        contentDescription = null,
-                                        modifier = Modifier.size((32 * textScaleFactor).dp),
-                                        tint = Color.White
-                                    )
+            // SECTION: SCHEDULE
+            item {
+                Column {
+                    SectionHeader(title = "Schedule")
+                    Spacer(modifier = Modifier.height(8.dp))
 
-                                    Column(
-                                        verticalArrangement = Arrangement.spacedBy((8 * textScaleFactor).dp)
-                                    ) {
-                                        Text(
-                                            text = "AI CHAT",
-                                            style = MaterialTheme.typography.titleLarge.copy(
-                                                fontFamily = barberChopFont,
-                                                fontSize = (20 * textScaleFactor).sp
-                                            ),
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color.White
-                                        )
-                                        Text(
-                                            text = "Start conversation",
-                                            style = MaterialTheme.typography.bodyMedium.copy(
-                                                fontSize = (12 * textScaleFactor).sp
-                                            ),
-                                            color = Color(0xFFA5D6A7)
-                                        )
-                                    }
-                                }
-                            }
-                        }
+                    GithubListGroup {
+                        GithubListItem(
+                            title = "Deck",
+                            icon = Icons.Default.Fullscreen,
+                            iconBgColor = Color(0xFF00ADB5), // Cyan
+                            onClick = onNavigateToDeck
+                        )
+                        HorizontalDivider(modifier = Modifier.padding(start = 56.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
-                        Card(
-                            onClick = onNavigateToDeck,
-                            modifier = Modifier.weight(1f),
-                            colors = CardDefaults.cardColors(
-                                containerColor = Color(0xFF1976D2)
-                            ),
-                            shape = RoundedCornerShape((16 * textScaleFactor).dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height((200 * textScaleFactor).dp)
-                            ) {
-                                Text(
-                                    text = "TIME",
-                                    style = MaterialTheme.typography.displayLarge.copy(
-                                        fontFamily = barberChopFont,
-                                        fontSize = (50 * textScaleFactor).sp
-                                    ),
-                                    fontWeight = FontWeight.Black,
-                                    color = Color(0xFF64B5F6).copy(alpha = 0.3f),
-                                    modifier = Modifier.align(Alignment.Center)
-                                )
+                        GithubListItem(
+                            title = "Calendar",
+                            icon = Icons.Default.Event,
+                            iconBgColor = Color(0xFFDA3633), // GitHub Red
+                            onClick = { showCalendarDialog = true }
+                        )
+                        HorizontalDivider(modifier = Modifier.padding(start = 56.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
-                                Column(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .padding((16 * textScaleFactor).dp),
-                                    verticalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Icon(
-                                        Icons.Default.Schedule,
-                                        contentDescription = null,
-                                        modifier = Modifier.size((32 * textScaleFactor).dp),
-                                        tint = Color.White
-                                    )
-
-                                    Column(
-                                        verticalArrangement = Arrangement.spacedBy((8 * textScaleFactor).dp)
-                                    ) {
-                                        Text(
-                                            text = "DECK",
-                                            style = MaterialTheme.typography.titleLarge.copy(
-                                                fontFamily = barberChopFont,
-                                                fontSize = (20 * textScaleFactor).sp
-                                            ),
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color.White
-                                        )
-                                        Text(
-                                            text = "View fullscreen",
-                                            style = MaterialTheme.typography.bodyMedium.copy(
-                                                fontSize = (12 * textScaleFactor).sp
-                                            ),
-                                            color = Color(0xFF90CAF9)
-                                        )
-                                    }
-                                }
-                            }
-                        }
+                        GithubListItem(
+                            title = "Timetable",
+                            icon = Icons.Default.Schedule,
+                            iconBgColor = Color(0xFFBF8700), // Dark Gold
+                            onClick = { showTimetableDialog = true }
+                        )
                     }
-                }
-
-                item {
-                    EventCarousel(
-                        events = upcomingEvents,
-                        scaleFactor = textScaleFactor,
-                        barberChopFont = barberChopFont
-                    )
                 }
             }
         }
+    }
+
+    if (showCalendarDialog) {
+        CalendarDialog(
+            events = calendarEvents,
+            onDismiss = { showCalendarDialog = false },
+            onAddEvent = { viewModel.addCalendarEvent(it) },
+            onDeleteEvent = { viewModel.deleteCalendarEvent(it.id) }
+        )
+    }
+
+    if (showTimetableDialog) {
+        TimetableDialog(
+            entries = timetableEntries,
+            onDismiss = { showTimetableDialog = false },
+            onAddEntry = { viewModel.addTimetableEntry(it) },
+            onDeleteEntry = { viewModel.deleteTimetableEntry(it.id) }
+        )
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun EventCarousel(
-    events: List<DashboardEventDisplay>,
-    scaleFactor: Float,
-    barberChopFont: FontFamily
-) {
-    val pagerState = rememberPagerState(pageCount = { events.size })
-    val scope = rememberCoroutineScope()
+fun SectionHeader(title: String) {
+    Text(
+        text = title.uppercase(),
+        style = MaterialTheme.typography.labelMedium.copy(
+            fontWeight = FontWeight.SemiBold,
+            letterSpacing = 0.5.sp
+        ),
+        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+        modifier = Modifier.padding(horizontal = 8.dp)
+    )
+}
 
-    LaunchedEffect(events.size) {
-        if (events.isNotEmpty()) {
-            while (true) {
-                delay(5000)
-                val nextPage = (pagerState.currentPage + 1) % events.size
-                pagerState.animateScrollToPage(nextPage)
-            }
-        }
-    }
-
+@Composable
+fun GithubListGroup(content: @Composable ColumnScope.() -> Unit) {
     Card(
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+        elevation = CardDefaults.cardElevation(0.dp)
+    ) {
+        Column(content = content)
+    }
+}
+
+@Composable
+fun GithubListItem(
+    title: String,
+    icon: ImageVector,
+    iconBgColor: Color,
+    onClick: () -> Unit
+) {
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height((240 * scaleFactor).dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.9f)
-        ),
-        shape = RoundedCornerShape((20 * scaleFactor).dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = (4 * scaleFactor).dp)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        if (events.isEmpty()) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding((20 * scaleFactor).dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
-            ) {
-                Icon(
-                    Icons.Default.EventNote,
-                    contentDescription = null,
-                    modifier = Modifier.size((48 * scaleFactor).dp),
-                    tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
-                )
-                Spacer(modifier = Modifier.height((12 * scaleFactor).dp))
-                Text(
-                    text = "NO UPCOMING EVENTS",
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontFamily = barberChopFont,
-                        fontSize = (16 * scaleFactor).sp
-                    ),
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
-                )
-            }
-        } else {
-            Box(modifier = Modifier.fillMaxSize()) {
-                HorizontalPager(
-                    state = pagerState,
-                    modifier = Modifier.fillMaxSize()
-                ) { page ->
-                    val event = events[page]
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(
-                                Brush.verticalGradient(
-                                    colors = listOf(
-                                        event.color.copy(alpha = 0.2f),
-                                        event.color.copy(alpha = 0.4f)
-                                    )
-                                )
-                            )
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding((20 * scaleFactor).dp),
-                            verticalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy((8 * scaleFactor).dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size((40 * scaleFactor).dp)
-                                        .background(
-                                            color = event.color.copy(alpha = 0.3f),
-                                            shape = CircleShape
-                                        ),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        if (event.isCalendar) Icons.Default.Event else Icons.Default.Schedule,
-                                        contentDescription = null,
-                                        modifier = Modifier.size((24 * scaleFactor).dp),
-                                        tint = event.color
-                                    )
-                                }
-                                Column {
-                                    Text(
-                                        text = if (event.isCalendar) "UPCOMING EVENT" else "TODAY'S SCHEDULE",
-                                        style = MaterialTheme.typography.labelSmall.copy(
-                                            fontSize = (11 * scaleFactor).sp,
-                                            fontFamily = barberChopFont
-                                        ),
-                                        fontWeight = FontWeight.Bold,
-                                        color = event.color
-                                    )
-                                    Text(
-                                        text = event.timeInfo,
-                                        style = MaterialTheme.typography.bodySmall.copy(
-                                            fontSize = (12 * scaleFactor).sp
-                                        ),
-                                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
-                                    )
-                                }
-                            }
-
-                            Column(
-                                verticalArrangement = Arrangement.spacedBy((8 * scaleFactor).dp)
-                            ) {
-                                Text(
-                                    text = event.title,
-                                    style = MaterialTheme.typography.headlineSmall.copy(
-                                        fontFamily = barberChopFont,
-                                        fontSize = (24 * scaleFactor).sp
-                                    ),
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onPrimaryContainer
-                                )
-                                if (event.description.isNotEmpty()) {
-                                    Text(
-                                        text = event.description,
-                                        style = MaterialTheme.typography.bodyMedium.copy(
-                                            fontSize = (14 * scaleFactor).sp
-                                        ),
-                                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
-                                        maxLines = 2
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-
-                Row(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding((16 * scaleFactor).dp),
-                    horizontalArrangement = Arrangement.spacedBy((8 * scaleFactor).dp)
-                ) {
-                    repeat(events.size) { index ->
-                        Box(
-                            modifier = Modifier
-                                .size(
-                                    width = if (pagerState.currentPage == index) (24 * scaleFactor).dp else (8 * scaleFactor).dp,
-                                    height = (8 * scaleFactor).dp
-                                )
-                                .background(
-                                    if (pagerState.currentPage == index)
-                                        MaterialTheme.colorScheme.primary
-                                    else
-                                        MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.3f),
-                                    shape = CircleShape
-                                )
-                        )
-                    }
-                }
-
-                Row(
-                    modifier = Modifier
-                        .align(Alignment.CenterStart)
-                        .padding(start = (8 * scaleFactor).dp)
-                ) {
-                    IconButton(
-                        onClick = {
-                            scope.launch {
-                                val prevPage = if (pagerState.currentPage == 0) events.size - 1 else pagerState.currentPage - 1
-                                pagerState.animateScrollToPage(prevPage)
-                            }
-                        }
-                    ) {
-                        Icon(
-                            Icons.Default.ChevronLeft,
-                            contentDescription = "Previous",
-                            modifier = Modifier.size((32 * scaleFactor).dp)
-                        )
-                    }
-                }
-
-                Row(
-                    modifier = Modifier
-                        .align(Alignment.CenterEnd)
-                        .padding(end = (8 * scaleFactor).dp)
-                ) {
-                    IconButton(
-                        onClick = {
-                            scope.launch {
-                                val nextPage = (pagerState.currentPage + 1) % events.size
-                                pagerState.animateScrollToPage(nextPage)
-                            }
-                        }
-                    ) {
-                        Icon(
-                            Icons.Default.ChevronRight,
-                            contentDescription = "Next",
-                            modifier = Modifier.size((32 * scaleFactor).dp)
-                        )
-                    }
-                }
-            }
+        // Rounded Icon Box
+        Box(
+            modifier = Modifier
+                .size(32.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(iconBgColor),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(20.dp)
+            )
         }
+
+        Spacer(modifier = Modifier.width(16.dp))
+
+        // Title
+        Text(
+            text = title,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.weight(1f)
+        )
+
+        // Chevron
+        Icon(
+            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+            modifier = Modifier.size(24.dp)
+        )
     }
 }
 
+// ================= Dialog Functions =================
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AnimatedSection(
-    visible: Boolean,
-    delayMillis: Int,
-    content: @Composable () -> Unit
-) {
-    var isVisible by remember { mutableStateOf(false) }
-
-    LaunchedEffect(visible) {
-        if (visible) {
-            delay(delayMillis.toLong())
-            isVisible = true
+private fun CalendarDialog(events: List<CalendarEvent>, onDismiss: () -> Unit, onAddEvent: (CalendarEvent) -> Unit, onDeleteEvent: (CalendarEvent) -> Unit) {
+    var showAddDialog by remember { mutableStateOf(false) }
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            Card(
+                modifier = Modifier.fillMaxWidth(0.95f).fillMaxHeight(0.9f).align(Alignment.Center),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                shape = RoundedCornerShape(24.dp)
+            ) {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    Box(modifier = Modifier.fillMaxWidth().background(Color(0xFFDA3633)).padding(24.dp)) {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Column {
+                                Text(text = "CALENDAR", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = Color.White)
+                            }
+                            IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White) }
+                        }
+                    }
+                    Box(modifier = Modifier.weight(1f)) {
+                        LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                            events.sortedBy { Calendar.getInstance().apply { timeInMillis = it.dateTime; set(Calendar.HOUR_OF_DAY, it.hour); set(Calendar.MINUTE, it.minute) }.timeInMillis }.forEach { event ->
+                                item(key = event.id) {
+                                    Card(colors = CardDefaults.cardColors(containerColor = Color(event.color).copy(alpha = 0.15f)), shape = RoundedCornerShape(12.dp)) {
+                                        Row(modifier = Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(text = event.title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                                                val calendar = Calendar.getInstance().apply { timeInMillis = event.dateTime; set(Calendar.HOUR_OF_DAY, event.hour); set(Calendar.MINUTE, event.minute) }
+                                                val timeStr = SimpleDateFormat("MMM dd, yyyy - HH:mm", Locale.getDefault()).format(calendar.time)
+                                                Text(text = timeStr, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                                            }
+                                            IconButton(onClick = { onDeleteEvent(event) }) { Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error) }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        FloatingActionButton(onClick = { showAddDialog = true }, modifier = Modifier.align(Alignment.BottomEnd).padding(24.dp), containerColor = Color(0xFFDA3633)) {
+                            Icon(Icons.Default.Add, contentDescription = "Add Event", tint = Color.White)
+                        }
+                    }
+                }
+            }
         }
     }
+    if (showAddDialog) {
+        var title by remember { mutableStateOf("") }
+        var description by remember { mutableStateOf("") }
+        val datePickerState = rememberDatePickerState(initialSelectedDateMillis = System.currentTimeMillis())
+        val timePickerState = rememberTimePickerState(initialHour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY), initialMinute = Calendar.getInstance().get(Calendar.MINUTE))
 
-    AnimatedVisibility(
-        visible = isVisible,
-        enter = fadeIn(animationSpec = tween(500)) + slideInVertically(
-            initialOffsetY = { it / 4 },
-            animationSpec = tween(500, easing = FastOutSlowInEasing)
-        ),
-        exit = fadeOut()
-    ) {
-        content()
+        Dialog(onDismissRequest = { showAddDialog = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+            Scaffold(
+                topBar = { TopAppBar(title = { Text("Add Event") }, navigationIcon = { IconButton(onClick = { showAddDialog = false }) { Icon(Icons.Default.Close, "") } }) },
+                bottomBar = {
+                    Row(modifier = Modifier.fillMaxWidth().padding(24.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        OutlinedButton(onClick = { showAddDialog = false }, modifier = Modifier.weight(1f)) { Text("Cancel") }
+                        FilledTonalButton(onClick = { if (title.isNotBlank() && datePickerState.selectedDateMillis != null) { onAddEvent(CalendarEvent(title = title, description = description, dateTime = datePickerState.selectedDateMillis!!, hour = timePickerState.hour, minute = timePickerState.minute)); showAddDialog = false } }, enabled = title.isNotBlank() && datePickerState.selectedDateMillis != null, modifier = Modifier.weight(1f), colors = ButtonDefaults.filledTonalButtonColors(containerColor = Color(0xFFDA3633))) { Text("Add", color = Color.White) }
+                    }
+                }
+            ) { paddingValues ->
+                LazyColumn(modifier = Modifier.fillMaxSize().padding(paddingValues), contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
+                    item { OutlinedTextField(value = title, onValueChange = { title = it }, label = { Text("Event Title") }, modifier = Modifier.fillMaxWidth()) }
+                    item { OutlinedTextField(value = description, onValueChange = { description = it }, label = { Text("Description") }, modifier = Modifier.fillMaxWidth()) }
+                    item { DatePicker(state = datePickerState, modifier = Modifier.fillMaxWidth()) }
+                    item { TimePicker(state = timePickerState, modifier = Modifier.fillMaxWidth()) }
+                }
+            }
+        }
     }
 }
 
-fun formatDateTime(timestamp: Long, hour: Int, minute: Int): String {
-    val calendar = Calendar.getInstance().apply {
-        timeInMillis = timestamp
-        set(Calendar.HOUR_OF_DAY, hour)
-        set(Calendar.MINUTE, minute)
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun TimetableDialog(entries: List<TimetableEntry>, onDismiss: () -> Unit, onAddEntry: (TimetableEntry) -> Unit, onDeleteEntry: (TimetableEntry) -> Unit) {
+    var showAddDialog by remember { mutableStateOf(false) }
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            Card(
+                modifier = Modifier.fillMaxWidth(0.95f).fillMaxHeight(0.9f).align(Alignment.Center),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                shape = RoundedCornerShape(24.dp)
+            ) {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    Box(modifier = Modifier.fillMaxWidth().background(Color(0xFFBF8700)).padding(24.dp)) {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Column {
+                                Text(text = "TIMETABLE", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = Color.White)
+                            }
+                            IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White) }
+                        }
+                    }
+                    Box(modifier = Modifier.weight(1f)) {
+                        LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                            listOf("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat").forEachIndexed { dayIndex, dayName ->
+                                val dayEntries = entries.filter { it.dayOfWeek == dayIndex + 1 }.sortedBy { it.startTime }
+                                if (dayEntries.isNotEmpty()) {
+                                    item { Text(text = dayName.uppercase(), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary) }
+                                    dayEntries.forEach { entry ->
+                                        item(key = entry.id) {
+                                            Card(colors = CardDefaults.cardColors(containerColor = Color(entry.color).copy(alpha = 0.15f)), shape = RoundedCornerShape(12.dp)) {
+                                                Row(modifier = Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                                    Column(modifier = Modifier.weight(1f)) {
+                                                        Text(text = entry.title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                                                        Text(text = "${entry.startTime} - ${entry.endTime}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                                                    }
+                                                    IconButton(onClick = { onDeleteEntry(entry) }) { Icon(Icons.Default.Delete, "Delete", tint = MaterialTheme.colorScheme.error) }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        FloatingActionButton(onClick = { showAddDialog = true }, modifier = Modifier.align(Alignment.BottomEnd).padding(24.dp), containerColor = Color(0xFFBF8700)) {
+                            Icon(Icons.Default.Add, contentDescription = "Add Entry", tint = Color.White)
+                        }
+                    }
+                }
+            }
+        }
     }
-    val sdf = SimpleDateFormat("MMM dd, yyyy - HH:mm", Locale.getDefault())
-    return sdf.format(calendar.time)
+    if (showAddDialog) {
+        var title by remember { mutableStateOf("") }
+        var description by remember { mutableStateOf("") }
+        var selectedDay by remember { mutableIntStateOf(1) }
+        var startTime by remember { mutableStateOf("09:00") }
+        var endTime by remember { mutableStateOf("10:00") }
+        var expanded by remember { mutableStateOf(false) }
+        val daysOfWeek = listOf("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday")
+
+        Dialog(onDismissRequest = { showAddDialog = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+            Scaffold(
+                topBar = { TopAppBar(title = { Text("Add Schedule") }, navigationIcon = { IconButton(onClick = { showAddDialog = false }) { Icon(Icons.Default.Close, "") } }) },
+                bottomBar = {
+                    Row(modifier = Modifier.fillMaxWidth().padding(24.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        OutlinedButton(onClick = { showAddDialog = false }, modifier = Modifier.weight(1f)) { Text("Cancel") }
+                        FilledTonalButton(onClick = { if (title.isNotBlank()) { onAddEntry(TimetableEntry(title = title, description = description, dayOfWeek = selectedDay, startTime = startTime, endTime = endTime)); showAddDialog = false } }, enabled = title.isNotBlank(), modifier = Modifier.weight(1f), colors = ButtonDefaults.filledTonalButtonColors(containerColor = Color(0xFFBF8700))) { Text("Add", color = Color.White) }
+                    }
+                }
+            ) { paddingValues ->
+                LazyColumn(modifier = Modifier.fillMaxSize().padding(paddingValues), contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
+                    item { OutlinedTextField(value = title, onValueChange = { title = it }, label = { Text("Title") }, modifier = Modifier.fillMaxWidth()) }
+                    item { OutlinedTextField(value = description, onValueChange = { description = it }, label = { Text("Description") }, modifier = Modifier.fillMaxWidth()) }
+                    item {
+                        ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }) {
+                            OutlinedTextField(value = daysOfWeek[selectedDay - 1], onValueChange = {}, readOnly = true, label = { Text("Day") }, trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) }, modifier = Modifier.fillMaxWidth().menuAnchor())
+                            ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                                daysOfWeek.forEachIndexed { index, day -> DropdownMenuItem(text = { Text(day) }, onClick = { selectedDay = index + 1; expanded = false }) }
+                            }
+                        }
+                    }
+                    item { OutlinedTextField(value = startTime, onValueChange = { startTime = it }, label = { Text("Start Time (HH:mm)") }, modifier = Modifier.fillMaxWidth()) }
+                    item { OutlinedTextField(value = endTime, onValueChange = { endTime = it }, label = { Text("End Time (HH:mm)") }, modifier = Modifier.fillMaxWidth()) }
+                }
+            }
+        }
+    }
 }

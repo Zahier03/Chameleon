@@ -186,7 +186,7 @@ fun ModelSelectorScreen(
                         item {
                             AnimatedSection(
                                 visible = animationStarted,
-                                delayMillis = 0
+                                delayMillis = 0L
                             ) {
                                 Box(
                                     modifier = Modifier
@@ -315,7 +315,7 @@ fun ModelSelectorScreen(
                     item {
                         AnimatedSection(
                             visible = animationStarted,
-                            delayMillis = 100
+                            delayMillis = 100L
                         ) {
                             Text(
                                 text = "YOUR MODELS",
@@ -334,7 +334,7 @@ fun ModelSelectorScreen(
                         val model = models[index]
                         AnimatedSection(
                             visible = animationStarted,
-                            delayMillis = 200 + (index * 50L)
+                            delayMillis = 200L + (index * 50L)
                         ) {
                             RetroModelCard(
                                 model = model,
@@ -872,7 +872,6 @@ fun GeminiModelDialog(
     var isValidating by remember { mutableStateOf(false) }
     var validationError by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
 
     val selectedGeminiModel = GeminiModels.models[selectedModelIndex]
 
@@ -1810,3 +1809,42 @@ fun ModelConfigDialog(
     )
 }
 
+@Composable
+private fun AnimatedSection(
+    visible: Boolean,
+    delayMillis: Long,
+    content: @Composable () -> Unit
+) {
+    val animatedAlpha by animateFloatAsState(
+        targetValue = if (visible) 1f else 0f,
+        animationSpec = tween(600, delayMillis = delayMillis.toInt(), easing = FastOutSlowInEasing),
+        label = "section_alpha"
+    )
+    val animatedOffset by animateFloatAsState(
+        targetValue = if (visible) 0f else 20f,
+        animationSpec = tween(600, delayMillis = delayMillis.toInt(), easing = FastOutSlowInEasing),
+        label = "section_offset"
+    )
+    Box(modifier = Modifier.graphicsLayer { alpha = animatedAlpha; translationY = animatedOffset }) { content() }
+}
+
+@Composable
+private fun StatItem(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    value: String,
+    label: String,
+    compact: Boolean = false,
+    font: FontFamily,
+    iconColor: Color = Color.White,
+    textColor: Color = Color.White,
+    labelColor: Color = Color.White,
+    scaleFactor: Float
+) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy((3 * scaleFactor).dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy((3 * scaleFactor).dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(icon, contentDescription = null, modifier = Modifier.size(if (compact) (12 * scaleFactor).dp else (16 * scaleFactor).dp), tint = iconColor)
+            Text(text = value, style = if (compact) MaterialTheme.typography.bodyMedium.copy(fontFamily = font, fontSize = (12 * scaleFactor).sp) else MaterialTheme.typography.titleSmall.copy(fontFamily = font, fontSize = (14 * scaleFactor).sp), fontWeight = FontWeight.Bold, color = textColor)
+        }
+        Text(text = label, style = if (compact) MaterialTheme.typography.labelSmall.copy(fontSize = (10 * scaleFactor).sp) else MaterialTheme.typography.bodySmall.copy(fontSize = (11 * scaleFactor).sp), color = labelColor)
+    }
+}

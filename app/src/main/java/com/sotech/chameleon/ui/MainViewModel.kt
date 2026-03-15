@@ -749,6 +749,30 @@ class MainViewModel @Inject constructor(
         }
     }
 
+    // NEW: Lifecycle control for AI to save resources
+    fun activateModel() {
+        val model = _currentModel.value ?: return
+        val status = _modelState.value.status
+        if (status == ModelStatus.NOT_INITIALIZED || status == ModelStatus.ERROR) {
+            initializeModel(model)
+        }
+    }
+
+    // NEW: Deactivate the AI to completely free memory
+    fun deactivateModel() {
+        val model = _currentModel.value ?: return
+        stopGeneration()
+        if (!model.isApiModel) {
+            llmHelper.cleanup()
+        } else {
+            geminiHelper.cleanup()
+        }
+        _modelState.value = ModelState(
+            model = model,
+            status = ModelStatus.NOT_INITIALIZED
+        )
+    }
+
     fun sendMessage(message: String, images: List<Bitmap> = emptyList()) {
         val currentModel = _currentModel.value ?: return
 
@@ -1317,10 +1341,8 @@ IMPORTANT: If the user asks to plot, graph, or visualize a function, you MUST pr
                     repository.saveModel(model)
                     selectModel(model)
 
-                    _modelState.value = ModelState(
-                        model = model,
-                        status = ModelStatus.READY
-                    )
+                    // Notice: We DO NOT force it to ModelStatus.READY here anymore.
+                    // Let the active screens initialize it lazily
 
                     _importStatus.value = "Import complete!"
                     delay(500)
@@ -1446,7 +1468,8 @@ IMPORTANT: If the user asks to plot, graph, or visualize a function, you MUST pr
             model = model,
             status = ModelStatus.NOT_INITIALIZED
         )
-        initializeModel(model)
+        // NOTICE: Removed initializeModel(model) call.
+        // It will only initialize lazily via activateModel().
     }
 
     fun deleteModel(model: ImportedModel) {

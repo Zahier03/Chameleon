@@ -1,41 +1,53 @@
 package com.sotech.chameleon.ui.screens
 
-import android.content.res.Configuration
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Image
+import android.content.Context
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.font.Font
-import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.sotech.chameleon.R
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import coil.compose.AsyncImage
 import com.sotech.chameleon.data.ThemeSettings
-import com.sotech.chameleon.ui.theme.customColors
-import kotlinx.coroutines.delay
+import java.io.File
+import java.io.FileOutputStream
+
+// Helper function to save images directly to app storage so they persist forever
+fun copyUriToInternalStorage(context: Context, uri: Uri): Uri? {
+    return try {
+        if (uri.scheme == "file") return uri
+        val inputStream = context.contentResolver.openInputStream(uri) ?: return null
+        val file = File(context.filesDir, "profile_pic_${System.currentTimeMillis()}.jpg")
+        val outputStream = FileOutputStream(file)
+        inputStream.copyTo(outputStream)
+        inputStream.close()
+        outputStream.close()
+        Uri.fromFile(file)
+    } catch (e: Exception) {
+        e.printStackTrace()
+        null
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -45,33 +57,25 @@ fun SettingsScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var animationStarted by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val prefs = remember { context.getSharedPreferences("user_profile", Context.MODE_PRIVATE) }
 
-    val configuration = LocalConfiguration.current
-    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
-    val screenWidthDp = configuration.screenWidthDp.dp
-    val screenHeightDp = configuration.screenHeightDp.dp
-
-    val scaleFactor = remember(screenWidthDp, screenHeightDp, isLandscape) {
-        if (isLandscape) {
-            (screenHeightDp.value / 411f).coerceIn(0.5f, 1f)
-        } else {
-            (screenWidthDp.value / 411f).coerceIn(0.7f, 1.2f)
-        }
+    // State initialized from SharedPreferences
+    var userName by remember {
+        mutableStateOf(
+            prefs.getString("name", null) ?: run {
+                val generatedName = "User-${(10000..99999).random()}"
+                prefs.edit().putString("name", generatedName).apply()
+                generatedName
+            }
+        )
+    }
+    var userBio by remember { mutableStateOf(prefs.getString("bio", "AI Explorer")!!) }
+    var userImageUri by remember {
+        mutableStateOf(prefs.getString("imageUri", null)?.let { Uri.parse(it) })
     }
 
-    val barberChopFont = remember {
-        try {
-            FontFamily(Font(R.font.barberchop, FontWeight.Bold))
-        } catch (e: Exception) {
-            FontFamily.Default
-        }
-    }
-
-    LaunchedEffect(Unit) {
-        delay(100)
-        animationStarted = true
-    }
+    var showEditProfileDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -80,19 +84,13 @@ fun SettingsScreen(
             TopAppBar(
                 title = {
                     Text(
-                        text = "SETTINGS",
-                        style = MaterialTheme.typography.displaySmall.copy(
-                            fontFamily = barberChopFont,
-                            fontSize = (40 * scaleFactor).sp,
-                            lineHeight = (50 * scaleFactor).sp
-                        ),
-                        fontWeight = FontWeight.Black,
-                        letterSpacing = (3 * scaleFactor).sp,
-                        color = MaterialTheme.colorScheme.onSurface
+                        text = "Profile",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
                     )
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
+                    containerColor = MaterialTheme.colorScheme.background
                 )
             )
         },
@@ -102,189 +100,292 @@ fun SettingsScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues),
-            contentPadding = PaddingValues(
-                start = (16 * scaleFactor).dp,
-                end = (16 * scaleFactor).dp,
-                top = (16 * scaleFactor).dp,
-                bottom = if (isLandscape) (60 * scaleFactor).dp else (80 * scaleFactor).dp
-            ),
-            verticalArrangement = Arrangement.spacedBy((16 * scaleFactor).dp)
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
-            item {
-                AnimatedSection(
-                    visible = animationStarted,
-                    delayMillis = 0
-                ) {
-                    HeroCard(
-                        scaleFactor = scaleFactor,
-                        barberChopFont = barberChopFont,
-                        isLandscape = isLandscape
-                    )
-                }
-            }
 
+            // PROFILE HEADER SECTION
             item {
-                AnimatedSection(
-                    visible = animationStarted,
-                    delayMillis = 100
+                Card(
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                    elevation = CardDefaults.cardElevation(0.dp),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    AppearanceCard(
-                        themeSettings = themeSettings,
-                        onClick = onThemeSettingsClick,
-                        scaleFactor = scaleFactor,
-                        barberChopFont = barberChopFont,
-                        isLandscape = isLandscape
-                    )
-                }
-            }
-
-            item {
-                AnimatedSection(
-                    visible = animationStarted,
-                    delayMillis = 200
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy((16 * scaleFactor).dp)
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
-                        InfoCard(
-                            modifier = Modifier.weight(1f),
-                            scaleFactor = scaleFactor,
-                            barberChopFont = barberChopFont,
-                            isLandscape = isLandscape
-                        )
-                        SystemCard(
-                            modifier = Modifier.weight(1f),
-                            scaleFactor = scaleFactor,
-                            barberChopFont = barberChopFont,
-                            isLandscape = isLandscape
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(16.dp)
+                        ) {
+                            // Avatar
+                            Box(
+                                modifier = Modifier
+                                    .size(72.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (userImageUri != null) {
+                                    AsyncImage(
+                                        model = userImageUri,
+                                        contentDescription = "Profile Picture",
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier.fillMaxSize()
+                                    )
+                                } else {
+                                    Icon(
+                                        Icons.Default.Person,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(40.dp),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+
+                            // Name & Bio
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = userName,
+                                    style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = userBio,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        // Edit Profile Button
+                        OutlinedButton(
+                            onClick = { showEditProfileDialog = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(8.dp),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                        ) {
+                            Text(
+                                text = "Edit profile",
+                                color = MaterialTheme.colorScheme.onSurface,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+                }
+            }
+
+            // SETTINGS SECTION
+            item {
+                Column {
+                    Text(
+                        text = "SETTINGS",
+                        style = MaterialTheme.typography.labelMedium.copy(
+                            fontWeight = FontWeight.SemiBold,
+                            letterSpacing = 0.5.sp
+                        ),
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                        modifier = Modifier.padding(horizontal = 8.dp)
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    ProfileListGroup {
+                        ProfileListItem(
+                            title = "Appearance",
+                            icon = Icons.Default.Palette,
+                            iconBgColor = Color(0xFF8957E5), // GitHub Purple
+                            onClick = onThemeSettingsClick,
+                            showChevron = true
                         )
                     }
                 }
             }
 
+            // ABOUT SECTION
             item {
-                AnimatedSection(
-                    visible = animationStarted,
-                    delayMillis = 300
-                ) {
-                    PrivacyCard(
-                        scaleFactor = scaleFactor,
-                        barberChopFont = barberChopFont,
-                        isLandscape = isLandscape
+                Column {
+                    Text(
+                        text = "ABOUT",
+                        style = MaterialTheme.typography.labelMedium.copy(
+                            fontWeight = FontWeight.SemiBold,
+                            letterSpacing = 0.5.sp
+                        ),
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                        modifier = Modifier.padding(horizontal = 8.dp)
                     )
-                }
-            }
+                    Spacer(modifier = Modifier.height(8.dp))
 
-            item {
-                AnimatedSection(
-                    visible = animationStarted,
-                    delayMillis = 400
-                ) {
-                    OpenSourceCard(
-                        scaleFactor = scaleFactor,
-                        barberChopFont = barberChopFont,
-                        isLandscape = isLandscape
-                    )
+                    ProfileListGroup {
+                        ProfileListItem(
+                            title = "Version 1.0.0",
+                            icon = Icons.Default.Info,
+                            iconBgColor = Color(0xFF2EA043), // GitHub Green
+                            onClick = { },
+                            showChevron = false
+                        )
+                    }
                 }
             }
         }
     }
+
+    if (showEditProfileDialog) {
+        EditProfileDialog(
+            currentName = userName,
+            currentBio = userBio,
+            currentImageUri = userImageUri,
+            onDismiss = { showEditProfileDialog = false },
+            onSave = { newName, newBio, newImageUri ->
+
+                // Copy to internal storage so it doesn't get lost when the app closes
+                var finalUri = newImageUri
+                if (newImageUri != null && newImageUri != userImageUri) {
+                    finalUri = copyUriToInternalStorage(context, newImageUri)
+                }
+
+                userName = newName
+                userBio = newBio
+                userImageUri = finalUri
+
+                // Save permanently via SharedPreferences
+                prefs.edit()
+                    .putString("name", newName)
+                    .putString("bio", newBio)
+                    .putString("imageUri", finalUri?.toString())
+                    .apply()
+
+                showEditProfileDialog = false
+            }
+        )
+    }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HeroCard(
-    scaleFactor: Float,
-    barberChopFont: FontFamily,
-    isLandscape: Boolean
+private fun EditProfileDialog(
+    currentName: String,
+    currentBio: String,
+    currentImageUri: Uri?,
+    onDismiss: () -> Unit,
+    onSave: (String, String, Uri?) -> Unit
 ) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(if (isLandscape) (120 * scaleFactor).dp else (180 * scaleFactor).dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.9f)
-        ),
-        shape = RoundedCornerShape((20 * scaleFactor).dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = (4 * scaleFactor).dp)
+    var editName by remember { mutableStateOf(currentName) }
+    var editBio by remember { mutableStateOf(currentBio) }
+    var editImageUri by remember { mutableStateOf(currentImageUri) }
+
+    val imagePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            editImageUri = uri
+        }
+    }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
-        Box(
-            modifier = Modifier.fillMaxSize()
-        ) {
-            Image(
-                painter = painterResource(id = R.drawable.robot),
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer { alpha = 0.3f }
-            )
-
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.verticalGradient(
-                            colors = listOf(
-                                Color.Transparent,
-                                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.8f)
-                            )
-                        )
-                    )
-            )
-
+        Scaffold(
+            modifier = Modifier
+                .fillMaxWidth(0.95f)
+                .fillMaxHeight(0.85f)
+                .clip(RoundedCornerShape(16.dp)),
+            topBar = {
+                TopAppBar(
+                    title = { Text("Edit Profile", fontWeight = FontWeight.Bold) },
+                    navigationIcon = {
+                        IconButton(onClick = onDismiss) {
+                            Icon(Icons.Default.Close, contentDescription = "Close")
+                        }
+                    },
+                    actions = {
+                        TextButton(
+                            onClick = { onSave(editName, editBio, editImageUri) }
+                        ) {
+                            Text("Save", fontWeight = FontWeight.Bold)
+                        }
+                    }
+                )
+            }
+        ) { paddingValues ->
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding((16 * scaleFactor).dp),
-                verticalArrangement = Arrangement.SpaceBetween
+                    .padding(paddingValues)
+                    .padding(24.dp),
+                verticalArrangement = Arrangement.spacedBy(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy((8 * scaleFactor).dp),
-                    verticalAlignment = Alignment.CenterVertically
+
+                // Profile Image Editor
+                Box(
+                    modifier = Modifier
+                        .size(100.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                        .clickable { imagePickerLauncher.launch("image/*") },
+                    contentAlignment = Alignment.Center
                 ) {
+                    if (editImageUri != null) {
+                        AsyncImage(
+                            model = editImageUri,
+                            contentDescription = "Profile Picture",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    } else {
+                        Icon(
+                            Icons.Default.Person,
+                            contentDescription = null,
+                            modifier = Modifier.size(50.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    // Overlay icon indicating it's clickable
                     Box(
                         modifier = Modifier
-                            .size((32 * scaleFactor).dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)),
+                            .fillMaxSize()
+                            .background(Color.Black.copy(alpha = 0.3f)),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            Icons.Default.AccountCircle,
-                            contentDescription = null,
-                            modifier = Modifier.size((20 * scaleFactor).dp),
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                    Column {
-                        Text(
-                            text = "MAPI AI",
-                            style = MaterialTheme.typography.titleMedium.copy(
-                                fontFamily = barberChopFont,
-                                fontSize = (16 * scaleFactor).sp,
-                                lineHeight = (20 * scaleFactor).sp
-                            ),
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer
-                        )
-                        Text(
-                            text = "Offline • Private • Powerful",
-                            style = MaterialTheme.typography.bodySmall.copy(
-                                fontSize = (10 * scaleFactor).sp
-                            ),
-                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                            Icons.Default.PhotoCamera,
+                            contentDescription = "Change Photo",
+                            tint = Color.White,
+                            modifier = Modifier.size(28.dp)
                         )
                     }
                 }
 
                 Text(
-                    text = "Your personal AI assistant that runs completely on your device",
-                    style = MaterialTheme.typography.bodyMedium.copy(
-                        fontSize = (12 * scaleFactor).sp,
-                        lineHeight = (16 * scaleFactor).sp
-                    ),
-                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                    text = "Tap to change photo",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Text Fields
+                OutlinedTextField(
+                    value = editName,
+                    onValueChange = { editName = it },
+                    label = { Text("Name") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+
+                OutlinedTextField(
+                    value = editBio,
+                    onValueChange = { editBio = it },
+                    label = { Text("Bio") },
+                    modifier = Modifier.fillMaxWidth(),
+                    maxLines = 3
                 )
             }
         }
@@ -292,398 +393,66 @@ fun HeroCard(
 }
 
 @Composable
-fun AppearanceCard(
-    themeSettings: ThemeSettings,
-    onClick: () -> Unit,
-    scaleFactor: Float,
-    barberChopFont: FontFamily,
-    isLandscape: Boolean
-) {
+private fun ProfileListGroup(content: @Composable ColumnScope.() -> Unit) {
     Card(
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+        elevation = CardDefaults.cardElevation(0.dp)
+    ) {
+        Column(content = content)
+    }
+}
+
+@Composable
+private fun ProfileListItem(
+    title: String,
+    icon: ImageVector,
+    iconBgColor: Color,
+    onClick: () -> Unit,
+    showChevron: Boolean = true
+) {
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onClick() },
-        colors = CardDefaults.cardColors(
-            containerColor = Color(0xFF7B1FA2).copy(alpha = 0.9f)
-        ),
-        shape = RoundedCornerShape((20 * scaleFactor).dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = (4 * scaleFactor).dp)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
+        // Rounded Icon Box
         Box(
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Box(
-                modifier = Modifier
-                    .size((70 * scaleFactor).dp)
-                    .offset(
-                        x = (15 * scaleFactor).dp,
-                        y = (-15 * scaleFactor).dp
-                    )
-                    .align(Alignment.TopEnd)
-                    .background(
-                        color = Color(0xFF9C27B0),
-                        shape = CircleShape
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    Icons.Default.Palette,
-                    contentDescription = null,
-                    modifier = Modifier
-                        .size((28 * scaleFactor).dp)
-                        .offset(
-                            x = (-8 * scaleFactor).dp,
-                            y = (8 * scaleFactor).dp
-                        ),
-                    tint = Color.White
-                )
-            }
-
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding((16 * scaleFactor).dp),
-                verticalArrangement = Arrangement.spacedBy((8 * scaleFactor).dp)
-            ) {
-                Text(
-                    text = "APPEARANCE",
-                    style = MaterialTheme.typography.titleLarge.copy(
-                        fontFamily = barberChopFont,
-                        fontSize = (20 * scaleFactor).sp,
-                        lineHeight = (26 * scaleFactor).sp
-                    ),
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White
-                )
-
-                Text(
-                    text = "Customize theme and colors",
-                    style = MaterialTheme.typography.bodyMedium.copy(
-                        fontSize = (12 * scaleFactor).sp
-                    ),
-                    color = Color(0xFFE1BEE7)
-                )
-
-                Spacer(modifier = Modifier.height((4 * scaleFactor).dp))
-
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy((8 * scaleFactor).dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Surface(
-                        color = Color.White.copy(alpha = 0.2f),
-                        shape = RoundedCornerShape((8 * scaleFactor).dp)
-                    ) {
-                        Text(
-                            text = "Text: ${String.format("%.1f", themeSettings.textScale)}x",
-                            modifier = Modifier.padding(
-                                horizontal = (12 * scaleFactor).dp,
-                                vertical = (6 * scaleFactor).dp
-                            ),
-                            style = MaterialTheme.typography.labelMedium.copy(
-                                fontSize = (10 * scaleFactor).sp,
-                                fontFamily = barberChopFont
-                            ),
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
-                        )
-                    }
-
-                    Surface(
-                        color = Color.White.copy(alpha = 0.2f),
-                        shape = RoundedCornerShape((8 * scaleFactor).dp)
-                    ) {
-                        Text(
-                            text = if (themeSettings.useDynamicColors) "Dynamic" else themeSettings.colorScheme.name,
-                            modifier = Modifier.padding(
-                                horizontal = (12 * scaleFactor).dp,
-                                vertical = (6 * scaleFactor).dp
-                            ),
-                            style = MaterialTheme.typography.labelMedium.copy(
-                                fontSize = (10 * scaleFactor).sp,
-                                fontFamily = barberChopFont
-                            ),
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
-                        )
-                    }
-                }
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = (4 * scaleFactor).dp),
-                    horizontalArrangement = Arrangement.End
-                ) {
-                    Icon(
-                        Icons.Default.ArrowForward,
-                        contentDescription = null,
-                        modifier = Modifier.size((18 * scaleFactor).dp),
-                        tint = Color.White
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun InfoCard(
-    modifier: Modifier = Modifier,
-    scaleFactor: Float,
-    barberChopFont: FontFamily,
-    isLandscape: Boolean
-) {
-    Card(
-        modifier = modifier.height(if (isLandscape) (120 * scaleFactor).dp else (160 * scaleFactor).dp),
-        colors = CardDefaults.cardColors(
-            containerColor = Color(0xFF00796B).copy(alpha = 0.9f)
-        ),
-        shape = RoundedCornerShape((20 * scaleFactor).dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = (4 * scaleFactor).dp)
-    ) {
-        Column(
             modifier = Modifier
-                .fillMaxSize()
-                .padding((16 * scaleFactor).dp),
-            verticalArrangement = Arrangement.SpaceBetween
+                .size(32.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(iconBgColor),
+            contentAlignment = Alignment.Center
         ) {
-            Box(
-                modifier = Modifier
-                    .size((32 * scaleFactor).dp)
-                    .clip(CircleShape)
-                    .background(Color.White.copy(alpha = 0.2f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    Icons.Default.Info,
-                    contentDescription = null,
-                    modifier = Modifier.size((20 * scaleFactor).dp),
-                    tint = Color.White
-                )
-            }
-
-            Column(
-                verticalArrangement = Arrangement.spacedBy((4 * scaleFactor).dp)
-            ) {
-                Text(
-                    text = "VERSION",
-                    style = MaterialTheme.typography.labelMedium.copy(
-                        fontSize = (10 * scaleFactor).sp,
-                        letterSpacing = (1 * scaleFactor).sp,
-                        fontFamily = barberChopFont
-                    ),
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF80CBC4)
-                )
-                Text(
-                    text = "1.0.0",
-                    style = MaterialTheme.typography.headlineMedium.copy(
-                        fontFamily = barberChopFont,
-                        fontSize = (24 * scaleFactor).sp,
-                        lineHeight = (30 * scaleFactor).sp
-                    ),
-                    fontWeight = FontWeight.Black,
-                    color = Color.White
-                )
-            }
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(18.dp)
+            )
         }
-    }
-}
 
-@Composable
-fun SystemCard(
-    modifier: Modifier = Modifier,
-    scaleFactor: Float,
-    barberChopFont: FontFamily,
-    isLandscape: Boolean
-) {
-    Card(
-        modifier = modifier.height(if (isLandscape) (120 * scaleFactor).dp else (160 * scaleFactor).dp),
-        colors = CardDefaults.cardColors(
-            containerColor = Color(0xFFF57C00).copy(alpha = 0.9f)
-        ),
-        shape = RoundedCornerShape((20 * scaleFactor).dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = (4 * scaleFactor).dp)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding((16 * scaleFactor).dp),
-            verticalArrangement = Arrangement.SpaceBetween
-        ) {
-            Box(
-                modifier = Modifier
-                    .size((32 * scaleFactor).dp)
-                    .clip(CircleShape)
-                    .background(Color.White.copy(alpha = 0.2f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    Icons.Default.Speed,
-                    contentDescription = null,
-                    modifier = Modifier.size((20 * scaleFactor).dp),
-                    tint = Color.White
-                )
-            }
+        Spacer(modifier = Modifier.width(16.dp))
 
-            Column(
-                verticalArrangement = Arrangement.spacedBy((4 * scaleFactor).dp)
-            ) {
-                Text(
-                    text = "PERFORMANCE",
-                    style = MaterialTheme.typography.labelMedium.copy(
-                        fontSize = (10 * scaleFactor).sp,
-                        letterSpacing = (1 * scaleFactor).sp,
-                        fontFamily = barberChopFont
-                    ),
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFFFFCC80)
-                )
-                Text(
-                    text = "GPU",
-                    style = MaterialTheme.typography.headlineMedium.copy(
-                        fontFamily = barberChopFont,
-                        fontSize = (24 * scaleFactor).sp,
-                        lineHeight = (30 * scaleFactor).sp
-                    ),
-                    fontWeight = FontWeight.Black,
-                    color = Color.White
-                )
-                Text(
-                    text = "Accelerated",
-                    style = MaterialTheme.typography.bodySmall.copy(
-                        fontSize = (10 * scaleFactor).sp
-                    ),
-                    color = Color.White.copy(alpha = 0.8f)
-                )
-            }
-        }
-    }
-}
+        // Title
+        Text(
+            text = title,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.weight(1f)
+        )
 
-@Composable
-fun PrivacyCard(
-    scaleFactor: Float,
-    barberChopFont: FontFamily,
-    isLandscape: Boolean
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = Color(0xFF1976D2).copy(alpha = 0.9f)
-        ),
-        shape = RoundedCornerShape((20 * scaleFactor).dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = (4 * scaleFactor).dp)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding((16 * scaleFactor).dp),
-            horizontalArrangement = Arrangement.spacedBy((12 * scaleFactor).dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier
-                    .size((44 * scaleFactor).dp)
-                    .clip(CircleShape)
-                    .background(Color.White.copy(alpha = 0.2f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    Icons.Default.Lock,
-                    contentDescription = null,
-                    modifier = Modifier.size((24 * scaleFactor).dp),
-                    tint = Color.White
-                )
-            }
-
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy((4 * scaleFactor).dp)
-            ) {
-                Text(
-                    text = "PRIVACY FIRST",
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontFamily = barberChopFont,
-                        fontSize = (16 * scaleFactor).sp,
-                        lineHeight = (20 * scaleFactor).sp
-                    ),
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White
-                )
-                Text(
-                    text = "Your AI runs completely offline. No data leaves your device.",
-                    style = MaterialTheme.typography.bodyMedium.copy(
-                        fontSize = (12 * scaleFactor).sp,
-                        lineHeight = (16 * scaleFactor).sp
-                    ),
-                    color = Color(0xFF90CAF9)
-                )
-            }
-        }
-    }
-}
-
-@Composable
-fun OpenSourceCard(
-    scaleFactor: Float,
-    barberChopFont: FontFamily,
-    isLandscape: Boolean
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = Color(0xFF388E3C).copy(alpha = 0.9f)
-        ),
-        shape = RoundedCornerShape((20 * scaleFactor).dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = (4 * scaleFactor).dp)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding((16 * scaleFactor).dp),
-            horizontalArrangement = Arrangement.spacedBy((12 * scaleFactor).dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier
-                    .size((44 * scaleFactor).dp)
-                    .clip(CircleShape)
-                    .background(Color.White.copy(alpha = 0.2f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    Icons.Default.Code,
-                    contentDescription = null,
-                    modifier = Modifier.size((24 * scaleFactor).dp),
-                    tint = Color.White
-                )
-            }
-
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy((4 * scaleFactor).dp)
-            ) {
-                Text(
-                    text = "OPEN SOURCE",
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontFamily = barberChopFont,
-                        fontSize = (16 * scaleFactor).sp,
-                        lineHeight = (20 * scaleFactor).sp
-                    ),
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White
-                )
-                Text(
-                    text = "Built with MediaPipe for everyone. Free to use and modify.",
-                    style = MaterialTheme.typography.bodyMedium.copy(
-                        fontSize = (12 * scaleFactor).sp,
-                        lineHeight = (16 * scaleFactor).sp
-                    ),
-                    color = Color(0xFFA5D6A7)
-                )
-            }
+        // Chevron
+        if (showChevron) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                modifier = Modifier.size(24.dp)
+            )
         }
     }
 }

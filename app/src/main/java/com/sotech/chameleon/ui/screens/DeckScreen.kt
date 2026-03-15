@@ -807,3 +807,12 @@ fun formatCountdown(millisUntil: Long): String {
         else -> "${seconds}s"
     }
 }
+
+fun formatDateTime(timestamp: Long, hour: Int, minute: Int): String {
+    val calendar = java.util.Calendar.getInstance().apply {
+        timeInMillis = timestamp;
+        set(java.util.Calendar.HOUR_OF_DAY, hour);
+        set(java.util.Calendar.MINUTE, minute)
+    }
+    return java.text.SimpleDateFormat("MMM dd, yyyy - HH:mm", java.util.Locale.getDefault()).format(calendar.time)
+}

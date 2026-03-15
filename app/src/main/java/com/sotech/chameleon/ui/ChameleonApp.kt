@@ -5,10 +5,9 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Event
+import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.ViewModule
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -20,7 +19,6 @@ import androidx.navigation.compose.*
 import androidx.navigation.navArgument
 import com.sotech.chameleon.ui.screens.ChatScreen
 import com.sotech.chameleon.ui.screens.HomeScreen
-import com.sotech.chameleon.ui.screens.ManageScreen
 import com.sotech.chameleon.ui.screens.DashboardScreen
 import com.sotech.chameleon.ui.screens.DeckScreen
 import com.sotech.chameleon.ui.screens.MindMapScreen
@@ -56,6 +54,10 @@ fun ChameleonApp(
     val statsSummary by viewModel.getStatsSummary().collectAsState(initial = com.sotech.chameleon.data.MessageStatsSummary())
     val themeSettings by viewModel.themeSettings.collectAsState()
 
+    // NEW: Collect saved projects for the Explore screen
+    val savedMindMaps by viewModel.savedMindMaps.collectAsState()
+    val savedNotes by viewModel.savedNotes.collectAsState()
+
     var showThemeDialog by remember { mutableStateOf(false) }
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
@@ -63,8 +65,20 @@ fun ChameleonApp(
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
 
+    // AI Lifecycle control
+    LaunchedEffect(currentRoute) {
+        if (currentRoute != null) {
+            val routeName = currentRoute.substringBefore("?")
+            if (routeName in listOf("chat", "mindmap", "notes", "code")) {
+                viewModel.activateModel()
+            } else {
+                viewModel.deactivateModel()
+            }
+        }
+    }
+
     val showBottomNav = when (currentRoute) {
-        "dashboard", "home", "manage", "settings" -> true
+        "home", "explore", "profile" -> true
         else -> false
     }
 
@@ -78,257 +92,105 @@ fun ChameleonApp(
                 Spacer(modifier = Modifier.height(12.dp))
 
                 NavigationRailItem(
-                    selected = currentRoute == "dashboard",
-                    onClick = {
-                        if (currentRoute != "dashboard") {
-                            navController.navigate("dashboard") {
-                                popUpTo("dashboard") { inclusive = false }
-                            }
-                        }
-                    },
-                    icon = { Icon(Icons.Default.ViewModule, contentDescription = "Dashboard") },
-                    label = { Text("Dashboard") }
-                )
-                NavigationRailItem(
                     selected = currentRoute == "home",
                     onClick = {
                         if (currentRoute != "home") {
-                            navController.navigate("home") {
-                                popUpTo("dashboard") { inclusive = false }
-                            }
+                            navController.navigate("home") { popUpTo("home") { inclusive = false } }
                         }
                     },
                     icon = { Icon(Icons.Default.Home, contentDescription = "Home") },
                     label = { Text("Home") }
                 )
                 NavigationRailItem(
-                    selected = currentRoute == "manage",
+                    selected = currentRoute == "explore",
                     onClick = {
-                        if (currentRoute != "manage") {
-                            navController.navigate("manage") {
-                                popUpTo("dashboard") { inclusive = false }
-                            }
+                        if (currentRoute != "explore") {
+                            navController.navigate("explore") { popUpTo("home") { inclusive = false } }
                         }
                     },
-                    icon = { Icon(Icons.Default.Event, contentDescription = "Manage") },
-                    label = { Text("Manage") }
+                    icon = { Icon(Icons.Default.Explore, contentDescription = "Explore") },
+                    label = { Text("Explore") }
                 )
                 NavigationRailItem(
-                    selected = currentRoute == "settings",
+                    selected = currentRoute == "profile",
                     onClick = {
-                        if (currentRoute != "settings") {
-                            navController.navigate("settings") {
-                                popUpTo("dashboard") { inclusive = false }
-                            }
+                        if (currentRoute != "profile") {
+                            navController.navigate("profile") { popUpTo("home") { inclusive = false } }
                         }
                     },
-                    icon = { Icon(Icons.Default.Settings, contentDescription = "Settings") },
-                    label = { Text("Settings") }
+                    icon = { Icon(Icons.Default.Person, contentDescription = "Profile") },
+                    label = { Text("Profile") }
                 )
             }
 
             NavHost(
                 navController = navController,
-                startDestination = "dashboard",
-                modifier = Modifier
-                    .fillMaxSize()
-                    .weight(1f),
-                enterTransition = {
-                    slideInHorizontally(
-                        initialOffsetX = { it },
-                        animationSpec = tween(300)
-                    ) + fadeIn(animationSpec = tween(300))
-                },
-                exitTransition = {
-                    slideOutHorizontally(
-                        targetOffsetX = { -it / 3 },
-                        animationSpec = tween(300)
-                    ) + fadeOut(animationSpec = tween(300))
-                },
-                popEnterTransition = {
-                    slideInHorizontally(
-                        initialOffsetX = { -it / 3 },
-                        animationSpec = tween(300)
-                    ) + fadeIn(animationSpec = tween(300))
-                },
-                popExitTransition = {
-                    slideOutHorizontally(
-                        targetOffsetX = { it },
-                        animationSpec = tween(300)
-                    ) + fadeOut(animationSpec = tween(300))
-                }
+                startDestination = "home",
+                modifier = Modifier.fillMaxSize().weight(1f),
+                enterTransition = { slideInHorizontally(initialOffsetX = { it }, animationSpec = tween(300)) + fadeIn(animationSpec = tween(300)) },
+                exitTransition = { slideOutHorizontally(targetOffsetX = { -it / 3 }, animationSpec = tween(300)) + fadeOut(animationSpec = tween(300)) },
+                popEnterTransition = { slideInHorizontally(initialOffsetX = { -it / 3 }, animationSpec = tween(300)) + fadeIn(animationSpec = tween(300)) },
+                popExitTransition = { slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(300)) + fadeOut(animationSpec = tween(300)) }
             ) {
-                composable("dashboard") {
+                composable("home") {
                     DashboardScreen(
                         viewModel = viewModel,
-                        onNavigateToChat = {
-                            navController.navigate("chat")
-                        },
-                        onNavigateToDeck = {
-                            navController.navigate("deck")
-                        }
+                        onNavigateToChat = { navController.navigate("chat") },
+                        onNavigateToMindMap = { navController.navigate("mindmap") },
+                        onNavigateToNotes = { navController.navigate("notes") },
+                        onNavigateToCode = { navController.navigate("code") },
+                        onNavigateToModelManager = { navController.navigate("models") },
+                        onNavigateToDeck = { navController.navigate("deck") }
                     )
                 }
-
-                composable("deck") {
-                    DeckScreen(
-                        viewModel = viewModel,
-                        onBack = {
-                            navController.popBackStack()
-                        }
-                    )
-                }
-
-                composable("home") {
+                composable("explore") {
                     HomeScreen(
-                        models = importedModels,
-                        currentModel = currentModel,
-                        isImporting = isImporting,
-                        statsSettings = statsSettings,
-                        statsSummary = statsSummary,
-                        onModelSelect = viewModel::selectModel,
-                        onModelDelete = viewModel::deleteModel,
-                        onModelImport = viewModel::importModel,
-                        onNavigateToChat = {
+                        conversations = conversations,
+                        savedMindMaps = savedMindMaps,
+                        savedNotes = savedNotes,
+                        onNavigateToChat = { convoId ->
+                            viewModel.setCurrentConversation(convoId)
                             navController.navigate("chat")
                         },
-                        onNavigateToMindMap = {
-                            navController.navigate("mindmap")
-                        },
-                        onNavigateToNotes = {
-                            navController.navigate("notes")
-                        },
-                        onNavigateToCode = {
-                            navController.navigate("code")
-                        },
-                        onNavigateToModelManager = {
-                            navController.navigate("models")
-                        },
-                        onNavigateToSettings = {
-                            showThemeDialog = true
-                        },
-                        onStatsSettingsUpdate = viewModel::updateStatsSettings
+                        onNavigateToMindMap = { navController.navigate("mindmap") },
+                        onNavigateToNotes = { navController.navigate("notes") }
                     )
                 }
-
-                composable("manage") {
-                    ManageScreen(
-                        viewModel = viewModel
-                    )
-                }
-
-                composable("settings") {
+                composable("profile") {
                     SettingsScreen(
                         themeSettings = themeSettings,
-                        onThemeSettingsClick = {
-                            showThemeDialog = true
-                        },
-                        onBack = {
-                            navController.popBackStack()
-                        }
+                        onThemeSettingsClick = { showThemeDialog = true },
+                        onBack = { navController.popBackStack() }
                     )
                 }
-
-                composable("mindmap") {
-                    MindMapScreen(
-                        viewModel = viewModel,
-                        onBack = {
-                            navController.popBackStack()
-                        },
-                        onOpenModelSelector = {
-                            navController.navigate("models?fromChat=true")
-                        }
-                    )
-                }
-
-                composable("notes") {
-                    NotesScreen(
-                        viewModel = viewModel,
-                        onBack = {
-                            navController.popBackStack()
-                        },
-                        onOpenModelSelector = {
-                            navController.navigate("models?fromChat=true")
-                        }
-                    )
-                }
-
-                composable("code") {
-                    CodePlaygroundScreen(
-                        viewModel = viewModel,
-                        onBack = {
-                            navController.popBackStack()
-                        }
-                    )
-                }
-
+                composable("deck") { DeckScreen(viewModel = viewModel, onBack = { navController.popBackStack() }) }
+                composable("mindmap") { MindMapScreen(viewModel = viewModel, onBack = { navController.popBackStack() }, onOpenModelSelector = { navController.navigate("models?fromChat=true") }) }
+                composable("notes") { NotesScreen(viewModel = viewModel, onBack = { navController.popBackStack() }, onOpenModelSelector = { navController.navigate("models?fromChat=true") }) }
+                composable("code") { CodePlaygroundScreen(viewModel = viewModel, onBack = { navController.popBackStack() }) }
                 composable("chat") {
                     ChatScreen(
-                        messages = chatMessages,
-                        conversations = conversations,
-                        currentConversation = currentConversation,
-                        currentModel = currentModel,
-                        modelStatus = modelState.status,
-                        modelError = modelState.error,
-                        initializationProgress = initializationProgress,
-                        isGenerating = isGenerating,
-                        currentResponse = currentResponse,
-                        currentInput = currentInput,
-                        onInputChange = viewModel::updateInput,
-                        onSendMessage = viewModel::sendMessage,
-                        onStopGeneration = viewModel::stopGeneration,
-                        onClearChat = viewModel::clearChat,
-                        onOpenModelSelector = {
-                            navController.navigate("models?fromChat=true")
-                        },
-                        onCreateNewConversation = viewModel::createNewConversation,
-                        onSelectConversation = viewModel::setCurrentConversation,
-                        onDeleteConversation = viewModel::deleteConversation,
-                        onDeleteConversations = viewModel::deleteConversations,
-                        onRenameConversation = viewModel::updateConversationTitle,
-                        onPinConversation = viewModel::pinConversation,
-                        onEditMessage = viewModel::editMessageAndRegenerate,
-                        onRegenerateFrom = viewModel::deleteMessageAndRegenerate
+                        messages = chatMessages, conversations = conversations, currentConversation = currentConversation,
+                        currentModel = currentModel, modelStatus = modelState.status, modelError = modelState.error,
+                        initializationProgress = initializationProgress, isGenerating = isGenerating, currentResponse = currentResponse,
+                        currentInput = currentInput, onInputChange = viewModel::updateInput, onSendMessage = viewModel::sendMessage,
+                        onStopGeneration = viewModel::stopGeneration, onClearChat = viewModel::clearChat, onOpenModelSelector = { navController.navigate("models?fromChat=true") },
+                        onCreateNewConversation = viewModel::createNewConversation, onSelectConversation = viewModel::setCurrentConversation,
+                        onDeleteConversation = viewModel::deleteConversation, onDeleteConversations = viewModel::deleteConversations,
+                        onRenameConversation = viewModel::updateConversationTitle, onPinConversation = viewModel::pinConversation,
+                        onEditMessage = viewModel::editMessageAndRegenerate, onRegenerateFrom = viewModel::deleteMessageAndRegenerate
                     )
                 }
-
-                composable(
-                    "models?fromChat={fromChat}",
-                    arguments = listOf(
-                        navArgument("fromChat") {
-                            type = NavType.BoolType
-                            defaultValue = false
-                        }
-                    )
-                ) { backStackEntry ->
+                composable("models?fromChat={fromChat}", arguments = listOf(navArgument("fromChat") { type = NavType.BoolType; defaultValue = false })) { backStackEntry ->
                     val fromChat = backStackEntry.arguments?.getBoolean("fromChat") ?: false
-
                     ModelSelectorScreen(
-                        models = importedModels,
-                        currentModel = currentModel,
-                        isImporting = isImporting,
-                        importProgress = importProgress,
-                        importStatus = importStatus,
-                        statsSettings = statsSettings,
-                        statsSummary = statsSummary,
-                        onModelSelect = { model ->
+                        models = importedModels, currentModel = currentModel, isImporting = isImporting,
+                        importProgress = importProgress, importStatus = importStatus, statsSettings = statsSettings,
+                        statsSummary = statsSummary, onModelSelect = { model ->
                             viewModel.selectModel(model)
-                            if (fromChat) {
-                                navController.popBackStack()
-                            } else {
-                                navController.navigate("chat") {
-                                    popUpTo("dashboard") { inclusive = false }
-                                }
-                            }
+                            if (fromChat) navController.popBackStack() else navController.navigate("chat") { popUpTo("home") { inclusive = false } }
                         },
-                        onModelDelete = viewModel::deleteModel,
-                        onModelImport = viewModel::importModel,
-                        onModelConfigUpdate = viewModel::updateModelConfig,
-                        onGeminiModelAdd = viewModel::addGeminiModel,
-                        onStatsSettingsUpdate = viewModel::updateStatsSettings,
-                        onBack = {
-                            navController.popBackStack()
-                        }
+                        onModelDelete = viewModel::deleteModel, onModelImport = viewModel::importModel, onModelConfigUpdate = viewModel::updateModelConfig,
+                        onGeminiModelAdd = viewModel::addGeminiModel, onStatsSettingsUpdate = viewModel::updateStatsSettings, onBack = { navController.popBackStack() }
                     )
                 }
             }
@@ -344,52 +206,34 @@ fun ChameleonApp(
                         contentColor = MaterialTheme.colorScheme.onSurface
                     ) {
                         NavigationBarItem(
-                            selected = currentRoute == "dashboard",
-                            onClick = {
-                                if (currentRoute != "dashboard") {
-                                    navController.navigate("dashboard") {
-                                        popUpTo("dashboard") { inclusive = false }
-                                    }
-                                }
-                            },
-                            icon = { Icon(Icons.Default.ViewModule, contentDescription = "Dashboard") },
-                            label = { Text("Dashboard") }
-                        )
-                        NavigationBarItem(
                             selected = currentRoute == "home",
                             onClick = {
                                 if (currentRoute != "home") {
-                                    navController.navigate("home") {
-                                        popUpTo("dashboard") { inclusive = false }
-                                    }
+                                    navController.navigate("home") { popUpTo("home") { inclusive = false } }
                                 }
                             },
                             icon = { Icon(Icons.Default.Home, contentDescription = "Home") },
                             label = { Text("Home") }
                         )
                         NavigationBarItem(
-                            selected = currentRoute == "manage",
+                            selected = currentRoute == "explore",
                             onClick = {
-                                if (currentRoute != "manage") {
-                                    navController.navigate("manage") {
-                                        popUpTo("dashboard") { inclusive = false }
-                                    }
+                                if (currentRoute != "explore") {
+                                    navController.navigate("explore") { popUpTo("home") { inclusive = false } }
                                 }
                             },
-                            icon = { Icon(Icons.Default.Event, contentDescription = "Manage") },
-                            label = { Text("Manage") }
+                            icon = { Icon(Icons.Default.Explore, contentDescription = "Explore") },
+                            label = { Text("Explore") }
                         )
                         NavigationBarItem(
-                            selected = currentRoute == "settings",
+                            selected = currentRoute == "profile",
                             onClick = {
-                                if (currentRoute != "settings") {
-                                    navController.navigate("settings") {
-                                        popUpTo("dashboard") { inclusive = false }
-                                    }
+                                if (currentRoute != "profile") {
+                                    navController.navigate("profile") { popUpTo("home") { inclusive = false } }
                                 }
                             },
-                            icon = { Icon(Icons.Default.Settings, contentDescription = "Settings") },
-                            label = { Text("Settings") }
+                            icon = { Icon(Icons.Default.Person, contentDescription = "Profile") },
+                            label = { Text("Profile") }
                         )
                     }
                 }
@@ -397,206 +241,72 @@ fun ChameleonApp(
         ) { paddingValues ->
             NavHost(
                 navController = navController,
-                startDestination = "dashboard",
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(paddingValues),
-                enterTransition = {
-                    slideInHorizontally(
-                        initialOffsetX = { it },
-                        animationSpec = tween(300)
-                    ) + fadeIn(animationSpec = tween(300))
-                },
-                exitTransition = {
-                    slideOutHorizontally(
-                        targetOffsetX = { -it / 3 },
-                        animationSpec = tween(300)
-                    ) + fadeOut(animationSpec = tween(300))
-                },
-                popEnterTransition = {
-                    slideInHorizontally(
-                        initialOffsetX = { -it / 3 },
-                        animationSpec = tween(300)
-                    ) + fadeIn(animationSpec = tween(300))
-                },
-                popExitTransition = {
-                    slideOutHorizontally(
-                        targetOffsetX = { it },
-                        animationSpec = tween(300)
-                    ) + fadeOut(animationSpec = tween(300))
-                }
+                startDestination = "home",
+                modifier = Modifier.fillMaxSize().padding(paddingValues),
+                enterTransition = { slideInHorizontally(initialOffsetX = { it }, animationSpec = tween(300)) + fadeIn(animationSpec = tween(300)) },
+                exitTransition = { slideOutHorizontally(targetOffsetX = { -it / 3 }, animationSpec = tween(300)) + fadeOut(animationSpec = tween(300)) },
+                popEnterTransition = { slideInHorizontally(initialOffsetX = { -it / 3 }, animationSpec = tween(300)) + fadeIn(animationSpec = tween(300)) },
+                popExitTransition = { slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(300)) + fadeOut(animationSpec = tween(300)) }
             ) {
-                composable("dashboard") {
+                composable("home") {
                     DashboardScreen(
                         viewModel = viewModel,
-                        onNavigateToChat = {
-                            navController.navigate("chat")
-                        },
-                        onNavigateToDeck = {
-                            navController.navigate("deck")
-                        }
+                        onNavigateToChat = { navController.navigate("chat") },
+                        onNavigateToMindMap = { navController.navigate("mindmap") },
+                        onNavigateToNotes = { navController.navigate("notes") },
+                        onNavigateToCode = { navController.navigate("code") },
+                        onNavigateToModelManager = { navController.navigate("models") },
+                        onNavigateToDeck = { navController.navigate("deck") }
                     )
                 }
-
-                composable("deck") {
-                    DeckScreen(
-                        viewModel = viewModel,
-                        onBack = {
-                            navController.popBackStack()
-                        }
-                    )
-                }
-
-                composable("home") {
+                composable("explore") {
                     HomeScreen(
-                        models = importedModels,
-                        currentModel = currentModel,
-                        isImporting = isImporting,
-                        statsSettings = statsSettings,
-                        statsSummary = statsSummary,
-                        onModelSelect = viewModel::selectModel,
-                        onModelDelete = viewModel::deleteModel,
-                        onModelImport = viewModel::importModel,
-                        onNavigateToChat = {
+                        conversations = conversations,
+                        savedMindMaps = savedMindMaps,
+                        savedNotes = savedNotes,
+                        onNavigateToChat = { convoId ->
+                            viewModel.setCurrentConversation(convoId)
                             navController.navigate("chat")
                         },
-                        onNavigateToMindMap = {
-                            navController.navigate("mindmap")
-                        },
-                        onNavigateToNotes = {
-                            navController.navigate("notes")
-                        },
-                        onNavigateToCode = {
-                            navController.navigate("code")
-                        },
-                        onNavigateToModelManager = {
-                            navController.navigate("models")
-                        },
-                        onNavigateToSettings = {
-                            showThemeDialog = true
-                        },
-                        onStatsSettingsUpdate = viewModel::updateStatsSettings
+                        onNavigateToMindMap = { navController.navigate("mindmap") },
+                        onNavigateToNotes = { navController.navigate("notes") }
                     )
                 }
-
-                composable("manage") {
-                    ManageScreen(
-                        viewModel = viewModel
-                    )
-                }
-
-                composable("settings") {
+                composable("profile") {
                     SettingsScreen(
                         themeSettings = themeSettings,
-                        onThemeSettingsClick = {
-                            showThemeDialog = true
-                        },
-                        onBack = {
-                            navController.popBackStack()
-                        }
+                        onThemeSettingsClick = { showThemeDialog = true },
+                        onBack = { navController.popBackStack() }
                     )
                 }
-
-                composable("mindmap") {
-                    MindMapScreen(
-                        viewModel = viewModel,
-                        onBack = {
-                            navController.popBackStack()
-                        },
-                        onOpenModelSelector = {
-                            navController.navigate("models?fromChat=true")
-                        }
-                    )
-                }
-
-                composable("notes") {
-                    NotesScreen(
-                        viewModel = viewModel,
-                        onBack = {
-                            navController.popBackStack()
-                        },
-                        onOpenModelSelector = {
-                            navController.navigate("models?fromChat=true")
-                        }
-                    )
-                }
-
-                composable("code") {
-                    CodePlaygroundScreen(
-                        viewModel = viewModel,
-                        onBack = {
-                            navController.popBackStack()
-                        }
-                    )
-                }
-
+                composable("deck") { DeckScreen(viewModel = viewModel, onBack = { navController.popBackStack() }) }
+                composable("mindmap") { MindMapScreen(viewModel = viewModel, onBack = { navController.popBackStack() }, onOpenModelSelector = { navController.navigate("models?fromChat=true") }) }
+                composable("notes") { NotesScreen(viewModel = viewModel, onBack = { navController.popBackStack() }, onOpenModelSelector = { navController.navigate("models?fromChat=true") }) }
+                composable("code") { CodePlaygroundScreen(viewModel = viewModel, onBack = { navController.popBackStack() }) }
                 composable("chat") {
                     ChatScreen(
-                        messages = chatMessages,
-                        conversations = conversations,
-                        currentConversation = currentConversation,
-                        currentModel = currentModel,
-                        modelStatus = modelState.status,
-                        modelError = modelState.error,
-                        initializationProgress = initializationProgress,
-                        isGenerating = isGenerating,
-                        currentResponse = currentResponse,
-                        currentInput = currentInput,
-                        onInputChange = viewModel::updateInput,
-                        onSendMessage = viewModel::sendMessage,
-                        onStopGeneration = viewModel::stopGeneration,
-                        onClearChat = viewModel::clearChat,
-                        onOpenModelSelector = {
-                            navController.navigate("models?fromChat=true")
-                        },
-                        onCreateNewConversation = viewModel::createNewConversation,
-                        onSelectConversation = viewModel::setCurrentConversation,
-                        onDeleteConversation = viewModel::deleteConversation,
-                        onDeleteConversations = viewModel::deleteConversations,
-                        onRenameConversation = viewModel::updateConversationTitle,
-                        onPinConversation = viewModel::pinConversation,
-                        onEditMessage = viewModel::editMessageAndRegenerate,
-                        onRegenerateFrom = viewModel::deleteMessageAndRegenerate
+                        messages = chatMessages, conversations = conversations, currentConversation = currentConversation,
+                        currentModel = currentModel, modelStatus = modelState.status, modelError = modelState.error,
+                        initializationProgress = initializationProgress, isGenerating = isGenerating, currentResponse = currentResponse,
+                        currentInput = currentInput, onInputChange = viewModel::updateInput, onSendMessage = viewModel::sendMessage,
+                        onStopGeneration = viewModel::stopGeneration, onClearChat = viewModel::clearChat, onOpenModelSelector = { navController.navigate("models?fromChat=true") },
+                        onCreateNewConversation = viewModel::createNewConversation, onSelectConversation = viewModel::setCurrentConversation,
+                        onDeleteConversation = viewModel::deleteConversation, onDeleteConversations = viewModel::deleteConversations,
+                        onRenameConversation = viewModel::updateConversationTitle, onPinConversation = viewModel::pinConversation,
+                        onEditMessage = viewModel::editMessageAndRegenerate, onRegenerateFrom = viewModel::deleteMessageAndRegenerate
                     )
                 }
-
-                composable(
-                    "models?fromChat={fromChat}",
-                    arguments = listOf(
-                        navArgument("fromChat") {
-                            type = NavType.BoolType
-                            defaultValue = false
-                        }
-                    )
-                ) { backStackEntry ->
+                composable("models?fromChat={fromChat}", arguments = listOf(navArgument("fromChat") { type = NavType.BoolType; defaultValue = false })) { backStackEntry ->
                     val fromChat = backStackEntry.arguments?.getBoolean("fromChat") ?: false
-
                     ModelSelectorScreen(
-                        models = importedModels,
-                        currentModel = currentModel,
-                        isImporting = isImporting,
-                        importProgress = importProgress,
-                        importStatus = importStatus,
-                        statsSettings = statsSettings,
-                        statsSummary = statsSummary,
-                        onModelSelect = { model ->
+                        models = importedModels, currentModel = currentModel, isImporting = isImporting,
+                        importProgress = importProgress, importStatus = importStatus, statsSettings = statsSettings,
+                        statsSummary = statsSummary, onModelSelect = { model ->
                             viewModel.selectModel(model)
-                            if (fromChat) {
-                                navController.popBackStack()
-                            } else {
-                                navController.navigate("chat") {
-                                    popUpTo("dashboard") { inclusive = false }
-                                }
-                            }
+                            if (fromChat) navController.popBackStack() else navController.navigate("chat") { popUpTo("home") { inclusive = false } }
                         },
-                        onModelDelete = viewModel::deleteModel,
-                        onModelImport = viewModel::importModel,
-                        onModelConfigUpdate = viewModel::updateModelConfig,
-                        onGeminiModelAdd = viewModel::addGeminiModel,
-                        onStatsSettingsUpdate = viewModel::updateStatsSettings,
-                        onBack = {
-                            navController.popBackStack()
-                        }
+                        onModelDelete = viewModel::deleteModel, onModelImport = viewModel::importModel, onModelConfigUpdate = viewModel::updateModelConfig,
+                        onGeminiModelAdd = viewModel::addGeminiModel, onStatsSettingsUpdate = viewModel::updateStatsSettings, onBack = { navController.popBackStack() }
                     )
                 }
             }
@@ -606,9 +316,7 @@ fun ChameleonApp(
     if (showThemeDialog) {
         ThemeSettingsDialog(
             currentSettings = themeSettings,
-            onDismiss = {
-                showThemeDialog = false
-            },
+            onDismiss = { showThemeDialog = false },
             onSave = { newSettings ->
                 viewModel.updateThemeSettings(newSettings)
                 showThemeDialog = false
