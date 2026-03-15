@@ -121,7 +121,7 @@ fun HomeScreen(
                 title = {
                     Row {
                         Text(
-                            text = "CHAMELE",
+                            text = "MA",
                             style = MaterialTheme.typography.displaySmall.copy(
                                 fontFamily = barberChopFont,
                                 fontSize = (40 * scaleFactor).sp,
@@ -132,7 +132,7 @@ fun HomeScreen(
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Text(
-                            text = "ON",
+                            text = "PI",
                             style = MaterialTheme.typography.displaySmall.copy(
                                 fontFamily = barberChopFont,
                                 fontSize = (40 * scaleFactor).sp,

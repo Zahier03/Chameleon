@@ -212,7 +212,7 @@ fun HeroCard(
             modifier = Modifier.fillMaxSize()
         ) {
             Image(
-                painter = painterResource(id = R.drawable.chameleon),
+                painter = painterResource(id = R.drawable.robot),
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
@@ -259,7 +259,7 @@ fun HeroCard(
                     }
                     Column {
                         Text(
-                            text = "CHAMELEON AI",
+                            text = "MAPI AI",
                             style = MaterialTheme.typography.titleMedium.copy(
                                 fontFamily = barberChopFont,
                                 fontSize = (16 * scaleFactor).sp,

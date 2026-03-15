@@ -329,7 +329,7 @@ class MainViewModel @Inject constructor(
         if (!file.exists()) {
             file.createNewFile()
             if (name.endsWith(".py")) {
-                file.writeText("# %%\nimport matplotlib.pyplot as plt\nimport numpy as np\n\nprint(\"Hello Chameleon Notebook!\")\n")
+                file.writeText("# %%\nimport matplotlib.pyplot as plt\nimport numpy as np\n\nprint(\"Hello MAPI Notebook!\")\n")
             }
             val currentExp = _expandedFolders.value.toMutableSet()
             currentExp.add(_currentPlaygroundDir.value.absolutePath)
@@ -371,12 +371,12 @@ class MainViewModel @Inject constructor(
     fun saveImageToGallery(bitmap: Bitmap) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val filename = "Chameleon_Plot_${System.currentTimeMillis()}.png"
+                val filename = "MAPI_Plot_${System.currentTimeMillis()}.png"
                 val values = ContentValues().apply {
                     put(MediaStore.Images.Media.DISPLAY_NAME, filename)
                     put(MediaStore.Images.Media.MIME_TYPE, "image/png")
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                        put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/Chameleon")
+                        put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/MAPI")
                         put(MediaStore.Images.Media.IS_PENDING, 1)
                     }
                 }

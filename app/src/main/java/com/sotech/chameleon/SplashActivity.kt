@@ -276,7 +276,7 @@ fun SplashScreen(
                 modifier = Modifier.graphicsLayer(alpha = textAlpha)
             ) {
                 Text(
-                    text = "CHAMELEON",
+                    text = "MAPI",
                     style = MaterialTheme.typography.displayLarge.copy(
                         fontWeight = FontWeight.Black,
                         letterSpacing = 3.sp,
